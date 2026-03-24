@@ -411,10 +411,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
 
     try {
-      // Some bundlers underestimate gas limits (e.g. Candide's verificationGasLimit
-      // for ERC-20 paymaster, or callGasLimit for USDT on mainnet). We estimate first,
-      // apply a 50% safety buffer, then re-prepare so the paymaster signs over the
-      // bumped values, and finally sign and submit.
       const estimated = await smartAccountClient.prepareUserOperation(userOpParams)
 
       const prepared = await smartAccountClient.prepareUserOperation({
@@ -447,7 +443,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const currentAllowance = await this.getAllowance(tokenAddress, paymasterAddress)
 
-    // Use a generous approval amount so the paymaster accepts both estimation and execution
     const approvalAmount = 10n ** 12n
 
     if (currentAllowance >= approvalAmount) {
@@ -457,7 +452,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const contract = new Contract(tokenAddress, ERC20_APPROVE_ABI)
     const calls = []
 
-    // USDT on Ethereum mainnet requires resetting allowance to 0 before setting a new value
     if (chainId === 1n &&
         tokenAddress.toLowerCase() === USDT_MAINNET_ADDRESS.toLowerCase() &&
         currentAllowance > 0n) {
