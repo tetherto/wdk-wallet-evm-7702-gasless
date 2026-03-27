@@ -44,6 +44,13 @@ import { ConfigurationError } from './errors.js'
 /** @typedef {import('viem/account-abstraction').BundlerClient} BundlerClient */
 
 /**
+ * @typedef {Object} ViemClients
+ * @property {PublicClient} publicClient - The viem public client.
+ * @property {BundlerClient} bundlerClient - The viem bundler client.
+ * @property {ViemChain} chain - The viem chain definition.
+ */
+
+/**
  * @typedef {Object} Evm7702GaslessWalletCommonConfig
  * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
  * @property {string} bundlerUrl - The url of the bundler/paymaster service.
@@ -106,9 +113,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Cached viem clients.
      *
      * @protected
-     * @type {{ publicClient: PublicClient, bundlerClient: BundlerClient, chain: ViemChain } | null}
+     * @type {ViemClients | undefined}
      */
-    this._viemClients = null
+    this._viemClients = undefined
 
     /**
      * The chain id.

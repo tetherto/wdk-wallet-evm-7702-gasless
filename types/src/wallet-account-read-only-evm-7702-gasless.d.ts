@@ -17,13 +17,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Cached viem clients.
      *
      * @protected
-     * @type {{ publicClient: PublicClient, bundlerClient: BundlerClient, chain: ViemChain } | null}
+     * @type {ViemClients | undefined}
      */
-    protected _viemClients: {
-        publicClient: PublicClient;
-        bundlerClient: BundlerClient;
-        chain: ViemChain;
-    } | null;
+    protected _viemClients: ViemClients | undefined;
     /**
      * The chain id.
      *
@@ -106,11 +102,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
      * @returns {Promise<{ publicClient: PublicClient, bundlerClient: BundlerClient, chain: ViemChain }>}
      */
-    protected _getViemClients(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<{
-        publicClient: PublicClient;
-        bundlerClient: BundlerClient;
-        chain: ViemChain;
-    }>;
+    protected _getViemClients(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<ViemClients>;
     /**
      * Returns the chain id.
      *
@@ -139,6 +131,20 @@ export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type PublicClient = import("viem").PublicClient;
 export type ViemChain = import("viem").Chain;
 export type BundlerClient = import("viem/account-abstraction").BundlerClient;
+export type ViemClients = {
+    /**
+     * - The viem public client.
+     */
+    publicClient: PublicClient;
+    /**
+     * - The viem bundler client.
+     */
+    bundlerClient: BundlerClient;
+    /**
+     * - The viem chain definition.
+     */
+    chain: ViemChain;
+};
 export type Evm7702GaslessWalletCommonConfig = {
     /**
      * - The url of the rpc provider, or an instance of a class that implements eip-1193.
