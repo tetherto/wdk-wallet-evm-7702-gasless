@@ -21,7 +21,7 @@ import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 import { http } from 'viem'
 import { createPaymasterClient, formatUserOperationRequest } from 'viem/account-abstraction'
 import { toAccount } from 'viem/accounts'
-import { toSimpleSmartAccount } from 'permissionless/accounts'
+import { to7702SimpleSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
@@ -271,10 +271,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       const { publicClient, chain } = await this._getViemClients(config)
       const viemOwner = this._getViemOwner()
 
-      const smartAccount = await toSimpleSmartAccount({
+      const smartAccount = await to7702SimpleSmartAccount({
         client: publicClient,
         owner: viemOwner,
-        eip7702: true,
         accountLogicAddress: config.delegationAddress
       })
 

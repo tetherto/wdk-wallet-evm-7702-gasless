@@ -21,7 +21,7 @@ import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 import { createPublicClient, defineChain, http } from 'viem'
 import { createBundlerClient, createPaymasterClient } from 'viem/account-abstraction'
 import { toAccount } from 'viem/accounts'
-import { toSimpleSmartAccount } from 'permissionless/accounts'
+import { to7702SimpleSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
 
 import { JsonRpcProvider } from 'ethers'
@@ -427,10 +427,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       async signTransaction () { throw new Error('Read-only account cannot sign.') }
     })
 
-    const smartAccount = await toSimpleSmartAccount({
+    const smartAccount = await to7702SimpleSmartAccount({
       client: publicClient,
       owner: dummyOwner,
-      eip7702: true,
       accountLogicAddress: config.delegationAddress
     })
 
