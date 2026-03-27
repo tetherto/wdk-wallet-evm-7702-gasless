@@ -298,7 +298,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * Validates the configuration to ensure all required fields are present.
    *
    * @protected
-   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The configuration to validate.
+   * @param {Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>} config - The configuration to validate.
    * @throws {ConfigurationError} If the configuration is invalid or has missing required fields.
    * @returns {void}
    */
