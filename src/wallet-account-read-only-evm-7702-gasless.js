@@ -24,8 +24,6 @@ import { toAccount } from 'viem/accounts'
 import { to7702SimpleSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
 
-import { JsonRpcProvider } from 'ethers'
-
 import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
@@ -357,13 +355,13 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
         name: `chain-${chainId}`,
         nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
         rpcUrls: {
-          default: { http: [typeof config.provider === 'string' ? config.provider : ''] }
+          default: { http: [config.provider] }
         }
       })
 
       const publicClient = createPublicClient({
         chain,
-        transport: http(typeof config.provider === 'string' ? config.provider : undefined)
+        transport: http(config.provider)
       })
 
       const bundlerClient = createBundlerClient({
@@ -386,9 +384,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    */
   async _getChainId () {
     if (!this._chainId) {
-      const providerUrl = typeof this._config.provider === 'string' ? this._config.provider : undefined
-      const provider = new JsonRpcProvider(providerUrl)
-      const { chainId } = await provider.getNetwork()
+      const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+      const { chainId } = await evmReadOnlyAccount._provider.getNetwork()
       this._chainId = chainId
     }
 
