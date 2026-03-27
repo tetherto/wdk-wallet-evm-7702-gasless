@@ -115,6 +115,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /** @private */
     private _getPaymasterApprovalCalls;
     /** @private */
+    private _getSmartAccountClientCacheKey;
+    /** @private */
     private _getSmartAccountClient;
     /** @private */
     private _getEvmReadOnlyAccount;
@@ -124,6 +126,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     private _estimatePimlicoFeesPerGas;
     /** @private */
     private _estimateFeesPerGas;
+    /** @private */
+    private _getTokenExchangeRate;
+    /** @private */
+    private _getPimlicoTokenExchangeRate;
+    /** @private */
+    private _getCandideTokenExchangeRate;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;

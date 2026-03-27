@@ -87,8 +87,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     /** @private */
     this._ownerAccount = ownerAccount
 
-    /** @private */
-    this._smartAccountClient = null
   }
 
   /**
@@ -257,7 +255,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
   /** @private */
   async _getSmartAccountClient (config = this._config) {
-    if (!this._smartAccountClient) {
+    const cacheKey = this._getSmartAccountClientCacheKey(config)
+
+    if (!this._smartAccountClients.has(cacheKey)) {
       const { publicClient, chain } = await this._getViemClients(config)
       const viemOwner = this._getViemOwner()
 
@@ -276,7 +276,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
       const isPimlico = bundlerUrl.includes('pimlico')
 
-      this._smartAccountClient = createSmartAccountClient({
+      this._smartAccountClients.set(cacheKey, createSmartAccountClient({
         account: smartAccount,
         chain,
         bundlerTransport: http(bundlerUrl),
@@ -287,10 +287,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
             ? () => this._estimatePimlicoFeesPerGas()
             : () => this._estimateFeesPerGas()
         }
-      })
+      }))
     }
 
-    return this._smartAccountClient
+    return this._smartAccountClients.get(cacheKey)
   }
 
   /** @private */

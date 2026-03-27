@@ -19,8 +19,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     constructor(account: WalletAccountEvm, config: Evm7702GaslessWalletConfig);
     /** @private */
     private _ownerAccount;
-    /** @private */
-    private _smartAccountClient;
     /**
      * The derivation path's index of this account.
      *

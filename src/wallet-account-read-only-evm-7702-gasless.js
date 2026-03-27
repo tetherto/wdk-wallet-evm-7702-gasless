@@ -123,7 +123,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     this._chainId = undefined
 
     /** @private */
-    this._smartAccountClient = undefined
+    this._smartAccountClients = new Map()
   }
 
   /**
@@ -442,8 +442,19 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
+  _getSmartAccountClientCacheKey (config) {
+    if (config.isSponsored) {
+      return `sponsored:${config.paymasterUrl || config.bundlerUrl}`
+    }
+
+    return `paymaster:${config.paymasterUrl || config.bundlerUrl}:${config.paymasterAddress}`
+  }
+
+  /** @private */
   async _getSmartAccountClient (config = this._config) {
-    if (!this._smartAccountClient) {
+    const cacheKey = this._getSmartAccountClientCacheKey(config)
+
+    if (!this._smartAccountClients.has(cacheKey)) {
       const { publicClient, chain } = await this._getViemClients(config)
       const address = await this.getAddress()
 
@@ -464,7 +475,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
       const isPimlico = bundlerUrl.includes('pimlico')
 
-      this._smartAccountClient = createSmartAccountClient({
+      this._smartAccountClients.set(cacheKey, createSmartAccountClient({
         account: smartAccount,
         chain,
         bundlerTransport: http(bundlerUrl),
@@ -475,10 +486,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
             ? () => this._estimatePimlicoFeesPerGas()
             : () => this._estimateFeesPerGas()
         }
-      })
+      }))
     }
 
-    return this._smartAccountClient
+    return this._smartAccountClients.get(cacheKey)
   }
 
   /** @private */
