@@ -422,12 +422,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     const { publicClient, chain } = await this._getViemClients(config)
     const address = await this.getAddress()
 
-    const dummyOwner = toAccount({
-      address,
-      async signMessage () { throw new Error('Read-only account cannot sign.') },
-      async signTypedData () { throw new Error('Read-only account cannot sign.') },
-      async signTransaction () { throw new Error('Read-only account cannot sign.') }
-    })
+    const dummyOwner = toAccount({ address })
 
     const smartAccount = await to7702SimpleSmartAccount({
       client: publicClient,
