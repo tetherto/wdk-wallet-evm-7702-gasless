@@ -100,7 +100,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      *
      * @protected
      * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
-     * @returns {Promise<{ publicClient: PublicClient, bundlerClient: BundlerClient, chain: ViemChain }>}
+     * @returns {Promise<ViemClients>} The cached viem clients.
      */
     protected _getViemClients(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<ViemClients>;
     /**
