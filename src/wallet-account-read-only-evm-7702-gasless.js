@@ -473,9 +473,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
         maxFeePerGas
       } = prepared
 
-      const totalGas = (callGasLimit || 0n) +
-        (verificationGasLimit || 0n) +
-        (preVerificationGas || 0n) +
+      const totalGas = callGasLimit +
+        verificationGasLimit +
+        preVerificationGas +
         (paymasterVerificationGasLimit || 0n) +
         (paymasterPostOpGasLimit || 0n)
 
