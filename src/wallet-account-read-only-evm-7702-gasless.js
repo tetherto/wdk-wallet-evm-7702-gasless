@@ -502,7 +502,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       value: BigInt(tx.value || 0)
     }))
 
-    if (!config.isSponsored && config.paymasterToken) {
+    if (!config.isSponsored) {
       const approvalCalls = await this._getPaymasterApprovalCalls(config)
       calls.unshift(...approvalCalls)
     }

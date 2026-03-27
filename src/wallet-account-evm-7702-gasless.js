@@ -336,7 +336,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored, paymasterToken } = config
 
-    if (!isSponsored && paymasterToken) {
+    if (!isSponsored) {
       const approvalCalls = await this._getPaymasterApprovalCalls(config)
       calls.unshift(...approvalCalls)
     }
@@ -396,7 +396,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored, paymasterToken } = config
 
-    if (!isSponsored && paymasterToken) {
+    if (!isSponsored) {
       const approvalCalls = await this._getPaymasterApprovalCalls(config)
       calls.unshift(...approvalCalls)
     }
