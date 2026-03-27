@@ -49,6 +49,7 @@ const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) re
 
 const GAS_LIMIT_BUFFER = 150n
 const GAS_LIMIT_DIVISOR = 100n
+const EXCHANGE_RATE_PRECISION = 10n ** 18n
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -369,13 +370,21 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
         maxFeePerGas
       } = prepared
 
-      const totalGas = (callGasLimit || 0n) +
-        (verificationGasLimit || 0n) +
-        (preVerificationGas || 0n) +
+      const totalGas = callGasLimit +
+        verificationGasLimit +
+        preVerificationGas +
         (paymasterVerificationGasLimit || 0n) +
         (paymasterPostOpGasLimit || 0n)
 
-      return totalGas * maxFeePerGas
+      const gasCostInWei = totalGas * maxFeePerGas
+
+      if (paymasterToken) {
+        const exchangeRate = await this._getTokenExchangeRate(paymasterToken.address, config)
+
+        return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
+      }
+
+      return gasCostInWei
     } catch (error) {
       if (error.message.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')

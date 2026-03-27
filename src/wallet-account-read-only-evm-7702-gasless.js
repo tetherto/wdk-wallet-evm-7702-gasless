@@ -18,7 +18,7 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
-import { createPublicClient, defineChain, http } from 'viem'
+import { createPublicClient, defineChain, hexToBigInt, http, numberToHex } from 'viem'
 import { createBundlerClient, createPaymasterClient } from 'viem/account-abstraction'
 import { toAccount } from 'viem/accounts'
 import { to7702SimpleSmartAccount } from 'permissionless/accounts'
@@ -88,6 +88,8 @@ import { ConfigurationError } from './errors.js'
 
 const GAS_FEE_MULTIPLIER = 150n
 const GAS_FEE_DIVISOR = 100n
+const EXCHANGE_RATE_PRECISION = 10n ** 18n
+const ENTRYPOINT_V08_ADDRESS = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
 
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
   /**
@@ -479,7 +481,15 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
         (paymasterVerificationGasLimit || 0n) +
         (paymasterPostOpGasLimit || 0n)
 
-      return totalGas * maxFeePerGas
+      const gasCostInWei = totalGas * maxFeePerGas
+
+      if (config.paymasterToken) {
+        const exchangeRate = await this._getTokenExchangeRate(config.paymasterToken.address, config)
+
+        return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
+      }
+
+      return gasCostInWei
     } catch (error) {
       if (error.message.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
@@ -526,5 +536,53 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       maxFeePerGas: maxFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR,
       maxPriorityFeePerGas: maxPriorityFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR
     }
+  }
+
+  /** @private */
+  async _getTokenExchangeRate (tokenAddress, config) {
+    const isPimlico = config.bundlerUrl.includes('pimlico')
+
+    if (isPimlico) {
+      return await this._getPimlicoTokenExchangeRate(tokenAddress, config.bundlerUrl)
+    }
+
+    return await this._getCandideTokenExchangeRate(tokenAddress, config.paymasterUrl || config.bundlerUrl)
+  }
+
+  /** @private */
+  async _getPimlicoTokenExchangeRate (tokenAddress, bundlerUrl) {
+    const client = createPublicClient({ transport: http(bundlerUrl) })
+    const chainId = await this._getChainId()
+
+    const res = await client.request({
+      method: 'pimlico_getTokenQuotes',
+      params: [
+        { tokens: [tokenAddress] },
+        ENTRYPOINT_V08_ADDRESS,
+        numberToHex(Number(chainId))
+      ]
+    })
+
+    return hexToBigInt(res.quotes[0].exchangeRate)
+  }
+
+  /** @private */
+  async _getCandideTokenExchangeRate (tokenAddress, paymasterUrl) {
+    const client = createPublicClient({ transport: http(paymasterUrl) })
+
+    const res = await client.request({
+      method: 'pm_supportedERC20Tokens',
+      params: [ENTRYPOINT_V08_ADDRESS]
+    })
+
+    const token = res.tokens.find(
+      t => t.address.toLowerCase() === tokenAddress.toLowerCase()
+    )
+
+    if (!token) {
+      throw new Error(`Token ${tokenAddress} is not supported by the paymaster.`)
+    }
+
+    return hexToBigInt(token.exchangeRate)
   }
 }
