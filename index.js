@@ -25,6 +25,8 @@
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataDomain} TypedDataDomain */
+/** @typedef {import('@tetherto/wdk-wallet-evm').TypedDataField} TypedDataField */
 
 /** @typedef {import('./src/wallet-manager-evm-7702-gasless.js').Evm7702GaslessWalletConfig} Evm7702GaslessWalletConfig */
 
