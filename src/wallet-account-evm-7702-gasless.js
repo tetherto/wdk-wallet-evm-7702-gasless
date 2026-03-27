@@ -237,8 +237,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    */
   dispose () {
     this._ownerAccount.dispose()
-    this._ownerAccount = null
-    this._smartAccountClient = null
   }
 
   /** @private */
