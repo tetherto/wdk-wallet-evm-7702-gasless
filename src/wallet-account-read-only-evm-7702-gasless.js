@@ -452,8 +452,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       paymasterContext: this._buildPaymasterContext(config),
       userOperation: {
         estimateFeesPerGas: isPimlico
-          ? () => this._estimatePimlicoFeesPerGas(bundlerUrl)
-          : () => this._estimateFeesPerGas(config.provider)
+          ? () => this._estimatePimlicoFeesPerGas()
+          : () => this._estimateFeesPerGas()
       }
     })
 
@@ -500,10 +500,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
-  async _estimatePimlicoFeesPerGas (bundlerUrl) {
-    const client = createPublicClient({ transport: http(bundlerUrl) })
+  async _estimatePimlicoFeesPerGas () {
+    const { bundlerClient } = await this._getViemClients()
 
-    const { fast } = await client.request({
+    const { fast } = await bundlerClient.request({
       method: 'pimlico_getUserOperationGasPrice'
     })
 
@@ -514,14 +514,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
-  async _estimateFeesPerGas (providerUrl) {
-    const client = createPublicClient({
-      transport: http(typeof providerUrl === 'string' ? providerUrl : undefined)
-    })
+  async _estimateFeesPerGas () {
+    const { publicClient } = await this._getViemClients()
 
     const [block, maxPriorityFeePerGas] = await Promise.all([
-      client.getBlock({ blockTag: 'latest' }),
-      client.estimateMaxPriorityFeePerGas()
+      publicClient.getBlock({ blockTag: 'latest' }),
+      publicClient.estimateMaxPriorityFeePerGas()
     ])
 
     const baseFeePerGas = block.baseFeePerGas

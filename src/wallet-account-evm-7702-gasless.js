@@ -295,8 +295,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
         paymasterContext: this._buildPaymasterContext(config),
         userOperation: {
           estimateFeesPerGas: isPimlico
-            ? () => this._estimatePimlicoFeesPerGas(bundlerUrl)
-            : () => this._estimateFeesPerGas(config.provider)
+            ? () => this._estimatePimlicoFeesPerGas()
+            : () => this._estimateFeesPerGas()
         }
       })
     }
