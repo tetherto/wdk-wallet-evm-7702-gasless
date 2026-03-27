@@ -57,28 +57,22 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Creates a new evm 7702 gasless wallet account.
    *
    * @overload
-   * @param {string | Uint8Array} seedOrAccount - The wallet's BIP-39 seed phrase.
+   * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase.
    * @param {string} path - The BIP-44 derivation path (e.g. "0'/0/0").
    * @param {Evm7702GaslessWalletConfig} config - The configuration object.
    */
 
   /**
-   * Creates a new evm 7702 gasless wallet account from an existing wallet-evm account.
+   * Creates a new evm 7702 gasless wallet account from a wallet-evm account.
    *
    * @overload
-   * @param {WalletAccountEvm} seedOrAccount - An existing WalletAccountEvm instance.
+   * @param {WalletAccountEvm} account - The wallet-evm account.
    * @param {Evm7702GaslessWalletConfig} config - The configuration object.
    */
   constructor (seedOrAccount, pathOrConfig, config) {
-    let ownerAccount, resolvedConfig
-
-    if (seedOrAccount instanceof WalletAccountEvm) {
-      ownerAccount = seedOrAccount
-      resolvedConfig = pathOrConfig || {}
-    } else {
-      resolvedConfig = config || {}
-      ownerAccount = new WalletAccountEvm(seedOrAccount, pathOrConfig, resolvedConfig)
-    }
+    const [ownerAccount, resolvedConfig] = seedOrAccount instanceof WalletAccountEvm
+      ? [seedOrAccount, pathOrConfig]
+      : [new WalletAccountEvm(seedOrAccount, pathOrConfig, config), config]
 
     super(ownerAccount.address, resolvedConfig)
 
