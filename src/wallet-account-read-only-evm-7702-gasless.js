@@ -99,8 +99,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   constructor (address, config) {
     super(address)
 
-    this._validateConfig(config)
-
     /**
      * The read-only evm 7702 gasless wallet account configuration.
      *
