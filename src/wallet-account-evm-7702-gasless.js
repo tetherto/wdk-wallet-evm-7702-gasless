@@ -432,39 +432,4 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
   }
 
-  /** @private */
-  async _getPaymasterApprovalCalls (config) {
-    const { paymasterAddress, paymasterToken } = config
-    const tokenAddress = paymasterToken.address
-    const chainId = await this._getChainId()
-
-    const currentAllowance = await this.getAllowance(tokenAddress, paymasterAddress)
-
-    const approvalAmount = 10n ** 12n
-
-    if (currentAllowance >= approvalAmount) {
-      return []
-    }
-
-    const contract = new Contract(tokenAddress, ERC20_APPROVE_ABI)
-    const calls = []
-
-    if (chainId === 1n &&
-        tokenAddress.toLowerCase() === USDT_MAINNET_ADDRESS.toLowerCase() &&
-        currentAllowance > 0n) {
-      calls.push({
-        to: tokenAddress,
-        value: 0n,
-        data: contract.interface.encodeFunctionData('approve', [paymasterAddress, 0])
-      })
-    }
-
-    calls.push({
-      to: tokenAddress,
-      value: 0n,
-      data: contract.interface.encodeFunctionData('approve', [paymasterAddress, approvalAmount])
-    })
-
-    return calls
-  }
 }

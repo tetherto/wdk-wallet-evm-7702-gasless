@@ -113,6 +113,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /** @private */
     private _buildPaymasterContext;
     /** @private */
+    private _getPaymasterApprovalCalls;
+    /** @private */
     private _getEvmReadOnlyAccount;
     /** @private */
     private _getUserOperationGasCost;

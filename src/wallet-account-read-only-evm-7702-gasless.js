@@ -24,6 +24,8 @@ import { toAccount } from 'viem/accounts'
 import { to7702SimpleSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
 
+import { Contract } from 'ethers'
+
 import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('ethers').Eip1193Provider} Eip1193Provider */
@@ -83,6 +85,8 @@ const GAS_FEE_MULTIPLIER = 150n
 const GAS_FEE_DIVISOR = 100n
 const EXCHANGE_RATE_PRECISION = 10n ** 18n
 const ENTRYPOINT_V08_ADDRESS = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
+const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
 
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
   /**
@@ -323,6 +327,42 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     }
   }
 
+  /** @private */
+  async _getPaymasterApprovalCalls (config) {
+    const { paymasterAddress, paymasterToken } = config
+    const tokenAddress = paymasterToken.address
+    const chainId = await this._getChainId()
+
+    const currentAllowance = await this.getAllowance(tokenAddress, paymasterAddress)
+
+    const approvalAmount = 10n ** 12n
+
+    if (currentAllowance >= approvalAmount) {
+      return []
+    }
+
+    const contract = new Contract(tokenAddress, ERC20_APPROVE_ABI)
+    const calls = []
+
+    if (chainId === 1n &&
+        tokenAddress.toLowerCase() === USDT_MAINNET_ADDRESS.toLowerCase() &&
+        currentAllowance > 0n) {
+      calls.push({
+        to: tokenAddress,
+        value: 0n,
+        data: contract.interface.encodeFunctionData('approve', [paymasterAddress, 0])
+      })
+    }
+
+    calls.push({
+      to: tokenAddress,
+      value: 0n,
+      data: contract.interface.encodeFunctionData('approve', [paymasterAddress, approvalAmount])
+    })
+
+    return calls
+  }
+
   /**
    * Returns cached viem clients (publicClient + bundlerClient).
    *
@@ -438,6 +478,11 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       data: tx.data || '0x',
       value: BigInt(tx.value || 0)
     }))
+
+    if (!config.isSponsored && config.paymasterToken) {
+      const approvalCalls = await this._getPaymasterApprovalCalls(config)
+      calls.unshift(...approvalCalls)
+    }
 
     try {
       const prepared = await smartAccountClient.prepareUserOperation({ calls })
