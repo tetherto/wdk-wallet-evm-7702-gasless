@@ -303,38 +303,19 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @returns {void}
    */
   _validateConfig (config) {
-    const { provider, bundlerUrl, isSponsored } = config
-    const missingFields = []
-
-    if (!provider) {
-      missingFields.push('provider')
-    }
-
-    if (!bundlerUrl) {
-      missingFields.push('bundlerUrl')
-    }
-
-    if (!config.delegationAddress) {
-      missingFields.push('delegationAddress')
-    }
-
-    if (missingFields.length > 0) {
-      throw new ConfigurationError(`Missing required configuration fields: ${missingFields.join(', ')}.`)
-    }
-
-    if (!isSponsored) {
-      const paymasterMissing = []
+    if (!config.isSponsored) {
+      const missingFields = []
 
       if (!config.paymasterAddress) {
-        paymasterMissing.push('paymasterAddress')
+        missingFields.push('paymasterAddress')
       }
 
       if (!config.paymasterToken) {
-        paymasterMissing.push('paymasterToken')
+        missingFields.push('paymasterToken')
       }
 
-      if (paymasterMissing.length > 0) {
-        throw new ConfigurationError(`Missing required paymaster token configuration fields: ${paymasterMissing.join(', ')}.`)
+      if (missingFields.length > 0) {
+        throw new ConfigurationError(`Missing required paymaster token configuration fields: ${missingFields.join(', ')}.`)
       }
     }
   }
