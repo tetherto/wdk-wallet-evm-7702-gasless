@@ -251,9 +251,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       },
       async signTypedData (typedData) {
         return await ownerAccount.signTypedData(typedData)
-      },
-      async signTransaction () {
-        throw new Error('Use UserOps instead of direct transactions')
       }
     })
   }
