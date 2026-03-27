@@ -77,12 +77,7 @@ import { ConfigurationError } from './errors.js'
  *   Evm7702GaslessPaymasterTokenConfig)} Evm7702GaslessWalletConfig
  */
 
-/**
- * @typedef {Object} UserOperationReceipt
- * @property {string} userOpHash - The user operation hash.
- * @property {string} [transactionHash] - The transaction hash.
- * @property {boolean} success - Whether the user operation was successful.
- */
+/** @typedef {import('viem/account-abstraction').GetUserOperationReceiptReturnType} GetUserOperationReceiptReturnType */
 
 const GAS_FEE_MULTIPLIER = 150n
 const GAS_FEE_DIVISOR = 100n
@@ -247,7 +242,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * Returns a user operation's receipt.
    *
    * @param {string} hash - The user operation hash.
-   * @returns {Promise<UserOperationReceipt | null>} The receipt, or null if the user operation has not been included in a block yet.
+   * @returns {Promise<GetUserOperationReceiptReturnType | null>} The receipt, or null if the user operation has not been included in a block yet.
    */
   async getUserOperationReceipt (hash) {
     const { bundlerClient } = await this._getViemClients()

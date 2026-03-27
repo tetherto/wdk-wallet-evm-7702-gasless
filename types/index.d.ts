@@ -15,3 +15,4 @@ export type Evm7702GaslessWalletConfig = import("./src/wallet-manager-evm-7702-g
 export type Evm7702GaslessWalletCommonConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessWalletCommonConfig;
 export type Evm7702GaslessPaymasterTokenConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
+export type GetUserOperationReceiptReturnType = import("./src/wallet-account-read-only-evm-7702-gasless.js").GetUserOperationReceiptReturnType;
