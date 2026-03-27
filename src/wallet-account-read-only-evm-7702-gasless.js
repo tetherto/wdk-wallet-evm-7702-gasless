@@ -228,8 +228,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     let userOpReceipt
     try {
       userOpReceipt = await bundlerClient.getUserOperationReceipt({ hash })
-    } catch {
-      return null
+    } catch (error) {
+      if (error.name === 'UserOperationReceiptNotFoundError') {
+        return null
+      }
+
+      throw error
     }
 
     if (!userOpReceipt || !userOpReceipt.receipt?.transactionHash) {
@@ -251,8 +255,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     try {
       const receipt = await bundlerClient.getUserOperationReceipt({ hash })
       return receipt
-    } catch {
-      return null
+    } catch (error) {
+      if (error.name === 'UserOperationReceiptNotFoundError') {
+        return null
+      }
+
+      throw error
     }
   }
 
