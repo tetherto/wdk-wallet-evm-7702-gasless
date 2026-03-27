@@ -121,6 +121,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @type {bigint | undefined}
      */
     this._chainId = undefined
+
+    /** @private */
+    this._smartAccountClient = undefined
   }
 
   /**
@@ -439,39 +442,48 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
+  async _getSmartAccountClient (config = this._config) {
+    if (!this._smartAccountClient) {
+      const { publicClient, chain } = await this._getViemClients(config)
+      const address = await this.getAddress()
+
+      const dummyOwner = toAccount({ address })
+
+      const smartAccount = await to7702SimpleSmartAccount({
+        client: publicClient,
+        owner: dummyOwner,
+        accountLogicAddress: config.delegationAddress
+      })
+
+      const bundlerUrl = config.bundlerUrl
+      const paymasterUrl = config.paymasterUrl
+
+      const paymasterOption = paymasterUrl
+        ? createPaymasterClient({ transport: http(paymasterUrl) })
+        : true
+
+      const isPimlico = bundlerUrl.includes('pimlico')
+
+      this._smartAccountClient = createSmartAccountClient({
+        account: smartAccount,
+        chain,
+        bundlerTransport: http(bundlerUrl),
+        paymaster: paymasterOption,
+        paymasterContext: this._buildPaymasterContext(config),
+        userOperation: {
+          estimateFeesPerGas: isPimlico
+            ? () => this._estimatePimlicoFeesPerGas()
+            : () => this._estimateFeesPerGas()
+        }
+      })
+    }
+
+    return this._smartAccountClient
+  }
+
+  /** @private */
   async _getUserOperationGasCost (txs, config) {
-    const { publicClient, chain } = await this._getViemClients(config)
-    const address = await this.getAddress()
-
-    const dummyOwner = toAccount({ address })
-
-    const smartAccount = await to7702SimpleSmartAccount({
-      client: publicClient,
-      owner: dummyOwner,
-      accountLogicAddress: config.delegationAddress
-    })
-
-    const bundlerUrl = config.bundlerUrl
-    const paymasterUrl = config.paymasterUrl
-
-    const paymasterOption = paymasterUrl
-      ? createPaymasterClient({ transport: http(paymasterUrl) })
-      : true
-
-    const isPimlico = bundlerUrl.includes('pimlico')
-
-    const smartAccountClient = createSmartAccountClient({
-      account: smartAccount,
-      chain,
-      bundlerTransport: http(bundlerUrl),
-      paymaster: paymasterOption,
-      paymasterContext: this._buildPaymasterContext(config),
-      userOperation: {
-        estimateFeesPerGas: isPimlico
-          ? () => this._estimatePimlicoFeesPerGas()
-          : () => this._estimateFeesPerGas()
-      }
-    })
+    const smartAccountClient = await this._getSmartAccountClient(config)
 
     const calls = txs.map(tx => ({
       to: tx.to,
