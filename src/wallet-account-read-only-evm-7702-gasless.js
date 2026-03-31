@@ -19,7 +19,7 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import { createPublicClient, defineChain, hexToBigInt, http, numberToHex } from 'viem'
-import { createBundlerClient, createPaymasterClient } from 'viem/account-abstraction'
+import { createBundlerClient, createPaymasterClient, UserOperationReceiptNotFoundError } from 'viem/account-abstraction'
 import { toAccount } from 'viem/accounts'
 import { to7702SimpleSmartAccount } from 'permissionless/accounts'
 import { createSmartAccountClient } from 'permissionless'
@@ -231,7 +231,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     try {
       userOpReceipt = await bundlerClient.getUserOperationReceipt({ hash })
     } catch (error) {
-      if (error.name === 'UserOperationReceiptNotFoundError') {
+      if (error instanceof UserOperationReceiptNotFoundError) {
         return null
       }
 
@@ -258,7 +258,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       const receipt = await bundlerClient.getUserOperationReceipt({ hash })
       return receipt
     } catch (error) {
-      if (error.name === 'UserOperationReceiptNotFoundError') {
+      if (error instanceof UserOperationReceiptNotFoundError) {
         return null
       }
 
