@@ -141,7 +141,7 @@ export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
 export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type PublicClient = import("viem").PublicClient;
-export type ViemChain = import("viem").Chain;
+export type Chain = import("viem").Chain;
 export type BundlerClient = import("viem/account-abstraction").BundlerClient;
 export type ViemClients = {
     /**
@@ -155,7 +155,7 @@ export type ViemClients = {
     /**
      * - The viem chain definition.
      */
-    chain: ViemChain;
+    chain: Chain;
 };
 export type Evm7702GaslessWalletCommonConfig = {
     /**

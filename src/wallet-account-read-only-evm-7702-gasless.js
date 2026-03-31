@@ -40,14 +40,14 @@ import { ConfigurationError } from './errors.js'
 /** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
 
 /** @typedef {import('viem').PublicClient} PublicClient */
-/** @typedef {import('viem').Chain} ViemChain */
+/** @typedef {import('viem').Chain} Chain */
 /** @typedef {import('viem/account-abstraction').BundlerClient} BundlerClient */
 
 /**
  * @typedef {Object} ViemClients
  * @property {PublicClient} publicClient - The viem public client.
  * @property {BundlerClient} bundlerClient - The viem bundler client.
- * @property {ViemChain} chain - The viem chain definition.
+ * @property {Chain} chain - The viem chain definition.
  */
 
 /**
