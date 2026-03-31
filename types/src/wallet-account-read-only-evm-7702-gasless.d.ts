@@ -206,5 +206,5 @@ export type Evm7702GaslessPaymasterTokenConfig = {
     transferMaxFee?: number | bigint;
 };
 export type Evm7702GaslessWalletConfig = Evm7702GaslessWalletCommonConfig & (Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig);
-export type UserOperationReceipt = import("viem/account-abstraction").UserOperationReceipt;
+export type UserOperationReceipt = import("viem/account-abstraction").GetUserOperationReceiptReturnType;
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
