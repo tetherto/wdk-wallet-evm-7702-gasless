@@ -255,7 +255,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       value: BigInt(tx.value || 0)
     }))
 
-    const { isSponsored, paymasterToken } = config
+    const { isSponsored } = config
 
     if (!isSponsored) {
       const approvalCalls = await this._getPaymasterApprovalCalls(config)
@@ -288,13 +288,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
       const gasCostInWei = totalGas * maxFeePerGas
 
-      if (paymasterToken) {
-        const exchangeRate = await this._getTokenExchangeRate(paymasterToken.address, config)
+      const exchangeRate = await this._getTokenExchangeRate(config.paymasterToken.address, config)
 
-        return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
-      }
-
-      return gasCostInWei
+      return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
     } catch (error) {
       if (error.message.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
