@@ -237,6 +237,73 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     this._ownerAccount.dispose()
   }
 
+  /**
+   * Estimates the gas cost of a user operation using the smart account client.
+   *
+   * @protected
+   * @param {EvmTransaction[]} txs - The transactions.
+   * @param {Evm7702GaslessWalletConfig} config - The configuration.
+   * @returns {Promise<bigint>} The estimated gas cost.
+   */
+  async _getUserOperationGasCost (txs, config) {
+    const smartAccountClient = await this._getSmartAccountClient(config)
+    const authorization = await this._getAuthorization(config)
+
+    const calls = txs.map(tx => ({
+      to: tx.to,
+      data: tx.data || '0x',
+      value: BigInt(tx.value || 0)
+    }))
+
+    const { isSponsored, paymasterToken } = config
+
+    if (!isSponsored) {
+      const approvalCalls = await this._getPaymasterApprovalCalls(config)
+      calls.unshift(...approvalCalls)
+    }
+
+    const prepareParams = { calls }
+
+    if (authorization) {
+      prepareParams.authorization = authorization
+    }
+
+    try {
+      const prepared = await smartAccountClient.prepareUserOperation(prepareParams)
+
+      const {
+        callGasLimit,
+        verificationGasLimit,
+        preVerificationGas,
+        paymasterVerificationGasLimit,
+        paymasterPostOpGasLimit,
+        maxFeePerGas
+      } = prepared
+
+      const totalGas = callGasLimit +
+        verificationGasLimit +
+        preVerificationGas +
+        (paymasterVerificationGasLimit || 0n) +
+        (paymasterPostOpGasLimit || 0n)
+
+      const gasCostInWei = totalGas * maxFeePerGas
+
+      if (paymasterToken) {
+        const exchangeRate = await this._getTokenExchangeRate(paymasterToken.address, config)
+
+        return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
+      }
+
+      return gasCostInWei
+    } catch (error) {
+      if (error.message.includes('AA50')) {
+        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
+      }
+
+      throw error
+    }
+  }
+
   /** @private */
   _getViemOwner () {
     const ownerAccount = this._ownerAccount
@@ -313,73 +380,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       r: wdkAuth.signature.r,
       s: wdkAuth.signature.s,
       yParity: Number(wdkAuth.signature.yParity)
-    }
-  }
-
-  /**
-   * Estimates the gas cost of a user operation using the smart account client.
-   *
-   * @protected
-   * @param {EvmTransaction[]} txs - The transactions.
-   * @param {Evm7702GaslessWalletConfig} config - The configuration.
-   * @returns {Promise<bigint>} The estimated gas cost.
-   */
-  async _getUserOperationGasCost (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-    const authorization = await this._getAuthorization(config)
-
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    const { isSponsored, paymasterToken } = config
-
-    if (!isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
-    }
-
-    const prepareParams = { calls }
-
-    if (authorization) {
-      prepareParams.authorization = authorization
-    }
-
-    try {
-      const prepared = await smartAccountClient.prepareUserOperation(prepareParams)
-
-      const {
-        callGasLimit,
-        verificationGasLimit,
-        preVerificationGas,
-        paymasterVerificationGasLimit,
-        paymasterPostOpGasLimit,
-        maxFeePerGas
-      } = prepared
-
-      const totalGas = callGasLimit +
-        verificationGasLimit +
-        preVerificationGas +
-        (paymasterVerificationGasLimit || 0n) +
-        (paymasterPostOpGasLimit || 0n)
-
-      const gasCostInWei = totalGas * maxFeePerGas
-
-      if (paymasterToken) {
-        const exchangeRate = await this._getTokenExchangeRate(paymasterToken.address, config)
-
-        return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
-      }
-
-      return gasCostInWei
-    } catch (error) {
-      if (error.message.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
-      }
-
-      throw error
     }
   }
 
