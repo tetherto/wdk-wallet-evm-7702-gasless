@@ -67,9 +67,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Returns a user operation's receipt.
      *
      * @param {string} hash - The user operation hash.
-     * @returns {Promise<GetUserOperationReceiptReturnType | null>} The receipt, or null if the user operation has not been included in a block yet.
+     * @returns {Promise<UserOperationReceipt | null>} The receipt, or null if the user operation has not been included in a block yet.
      */
-    getUserOperationReceipt(hash: string): Promise<GetUserOperationReceiptReturnType | null>;
+    getUserOperationReceipt(hash: string): Promise<UserOperationReceipt | null>;
     /**
      * Returns the current allowance for the given token and spender.
      *
@@ -206,5 +206,5 @@ export type Evm7702GaslessPaymasterTokenConfig = {
     transferMaxFee?: number | bigint;
 };
 export type Evm7702GaslessWalletConfig = Evm7702GaslessWalletCommonConfig & (Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig);
-export type GetUserOperationReceiptReturnType = import("viem/account-abstraction").GetUserOperationReceiptReturnType;
+export type UserOperationReceipt = import("viem/account-abstraction").UserOperationReceipt;
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
