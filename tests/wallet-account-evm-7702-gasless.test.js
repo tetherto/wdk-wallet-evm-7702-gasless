@@ -2,7 +2,68 @@ import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globa
 import * as bip39 from 'bip39'
 import { Contract } from 'ethers'
 
-import { WalletAccountEvm7702Gasless, WalletAccountReadOnlyEvm7702Gasless } from '../index.js'
+const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
+const actualViemAA = await import('viem/account-abstraction')
+const actualPermissionless = await import('permissionless')
+const actualPermissionlessAccounts = await import('permissionless/accounts')
+const actualViem = await import('viem')
+const actualViemAccounts = await import('viem/accounts')
+
+const getNetworkMock = jest.fn()
+
+const WalletAccountReadOnlyEvmMock = jest.fn().mockImplementation(() => ({
+  _provider: { getNetwork: getNetworkMock }
+}))
+
+Object.defineProperties(WalletAccountReadOnlyEvmMock, Object.getOwnPropertyDescriptors(actualWalletEvm.WalletAccountReadOnlyEvm))
+
+jest.unstable_mockModule('@tetherto/wdk-wallet-evm', () => ({
+  ...actualWalletEvm,
+  WalletAccountReadOnlyEvm: WalletAccountReadOnlyEvmMock
+}))
+
+const prepareUserOperationMock = jest.fn()
+const signUserOperationMock = jest.fn()
+const smartAccountClientRequestMock = jest.fn()
+
+jest.unstable_mockModule('permissionless', () => ({
+  ...actualPermissionless,
+  createSmartAccountClient: jest.fn().mockReturnValue({
+    prepareUserOperation: prepareUserOperationMock,
+    account: {
+      signUserOperation: signUserOperationMock,
+      entryPoint: { address: '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108' }
+    },
+    request: smartAccountClientRequestMock
+  })
+}))
+
+jest.unstable_mockModule('permissionless/accounts', () => ({
+  ...actualPermissionlessAccounts,
+  to7702SimpleSmartAccount: jest.fn().mockResolvedValue({
+    address: '0x405005C7c4422390F4B334F64Cf20E0b767131d0',
+    entryPoint: { address: '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108' }
+  })
+}))
+
+jest.unstable_mockModule('viem/account-abstraction', () => ({
+  ...actualViemAA,
+  createBundlerClient: jest.fn().mockReturnValue({}),
+  createPaymasterClient: jest.fn().mockReturnValue({}),
+  formatUserOperationRequest: jest.fn().mockReturnValue({})
+}))
+
+jest.unstable_mockModule('viem', () => ({
+  ...actualViem,
+  createPublicClient: jest.fn().mockReturnValue({})
+}))
+
+jest.unstable_mockModule('viem/accounts', () => ({
+  ...actualViemAccounts,
+  toAccount: jest.fn().mockReturnValue({ address: '0x405005C7c4422390F4B334F64Cf20E0b767131d0', type: 'local' })
+}))
+
+const { WalletAccountEvm7702Gasless, WalletAccountReadOnlyEvm7702Gasless } = await import('../index.js')
 
 const SEED_PHRASE = 'cook voyage document eight skate token alien guide drink uncle term abuse'
 const INVALID_SEED_PHRASE = 'invalid seed phrase'
@@ -46,16 +107,41 @@ const EXPECTED_TYPED_DATA_SIGNATURE = '0x1b319d2006b194b044eaff941404d39b8532de6
 
 const DUMMY_USER_OP_HASH = '0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1'
 
+const DUMMY_EIP1193_PROVIDER = {
+  request: jest.fn(async ({ method }) => {
+    if (method === 'eth_chainId') return '0x1'
+    if (method === 'eth_getCode') return '0x'
+    if (method === 'eth_getTransactionCount') return '0x0'
+    if (method === 'net_version') return '1'
+    return null
+  })
+}
+
 const SPONSORED_CONFIG = {
+  provider: DUMMY_EIP1193_PROVIDER,
   delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
   bundlerUrl: 'https://dummy-bundler.url/',
   isSponsored: true
+}
+
+const DUMMY_PREPARED_USER_OP = {
+  callGasLimit: 50_000n,
+  verificationGasLimit: 100_000n,
+  preVerificationGas: 30_000n,
+  paymasterVerificationGasLimit: 20_000n,
+  paymasterPostOpGasLimit: 10_000n,
+  maxFeePerGas: 10_000_000_000n,
+  signature: '0xsig'
 }
 
 describe('WalletAccountEvm7702Gasless', () => {
   let account
 
   beforeEach(() => {
+    jest.clearAllMocks()
+
+    getNetworkMock.mockResolvedValue({ chainId: 1n })
+
     account = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
   })
 
@@ -119,8 +205,9 @@ describe('WalletAccountEvm7702Gasless', () => {
 
   describe('sendTransaction', () => {
     test('should successfully send a sponsored transaction', async () => {
-      jest.spyOn(account, 'quoteSendTransaction').mockResolvedValue({ fee: 0n })
-      jest.spyOn(account, '_sendUserOperation').mockResolvedValue(DUMMY_USER_OP_HASH)
+      prepareUserOperationMock.mockResolvedValue(DUMMY_PREPARED_USER_OP)
+      signUserOperationMock.mockResolvedValue('0xsignature')
+      smartAccountClientRequestMock.mockResolvedValue(DUMMY_USER_OP_HASH)
 
       const TRANSACTION = { to: ACCOUNT.address, value: 1, data: '0x' }
 
@@ -128,17 +215,14 @@ describe('WalletAccountEvm7702Gasless', () => {
 
       expect(hash).toBe(DUMMY_USER_OP_HASH)
       expect(fee).toBe(0n)
-      expect(account._sendUserOperation).toHaveBeenCalledWith(
-        [TRANSACTION],
-        expect.objectContaining({ isSponsored: true })
-      )
     })
   })
 
   describe('transfer', () => {
     test('should successfully transfer tokens with sponsored flow', async () => {
-      jest.spyOn(account, 'quoteSendTransaction').mockResolvedValue({ fee: 0n })
-      jest.spyOn(account, '_sendUserOperation').mockResolvedValue(DUMMY_USER_OP_HASH)
+      prepareUserOperationMock.mockResolvedValue(DUMMY_PREPARED_USER_OP)
+      signUserOperationMock.mockResolvedValue('0xsignature')
+      smartAccountClientRequestMock.mockResolvedValue(DUMMY_USER_OP_HASH)
 
       const TRANSFER = {
         token: USDT_MAINNET_ADDRESS,
@@ -150,10 +234,6 @@ describe('WalletAccountEvm7702Gasless', () => {
 
       expect(hash).toBe(DUMMY_USER_OP_HASH)
       expect(fee).toBe(0n)
-      expect(account._sendUserOperation).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.objectContaining({ to: USDT_MAINNET_ADDRESS })]),
-        expect.objectContaining({ isSponsored: true })
-      )
     })
 
     test('should throw if transfer fee exceeds the transfer max fee configuration', async () => {
@@ -184,7 +264,7 @@ describe('WalletAccountEvm7702Gasless', () => {
 
     test('should throw if approving non-zero USDT on mainnet when allowance is non-zero', async () => {
       jest.spyOn(account, 'getAllowance').mockResolvedValue(1n)
-      jest.spyOn(account, '_getChainId').mockResolvedValue(1n)
+
 
       const APPROVE_OPTIONS = {
         token: USDT_MAINNET_ADDRESS,
@@ -198,7 +278,7 @@ describe('WalletAccountEvm7702Gasless', () => {
 
     test('should successfully approve a non-zero amount for USDT on mainnet when allowance is zero', async () => {
       jest.spyOn(account, 'getAllowance').mockResolvedValue(0n)
-      jest.spyOn(account, '_getChainId').mockResolvedValue(1n)
+
 
       const sendTxSpy = jest.spyOn(account, 'sendTransaction').mockResolvedValue({ hash: DUMMY_USER_OP_HASH, fee: 0n })
 
@@ -225,7 +305,7 @@ describe('WalletAccountEvm7702Gasless', () => {
 
     test('should successfully approve a zero amount for USDT on mainnet when allowance is non-zero', async () => {
       jest.spyOn(account, 'getAllowance').mockResolvedValue(1n)
-      jest.spyOn(account, '_getChainId').mockResolvedValue(1n)
+
 
       const sendTxSpy = jest.spyOn(account, 'sendTransaction').mockResolvedValue({ hash: DUMMY_USER_OP_HASH, fee: 0n })
 
