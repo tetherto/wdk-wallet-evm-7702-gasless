@@ -1,0 +1,70 @@
+{
+  "name": "@tetherto/wdk-wallet-evm-7702-gasless",
+  "version": "1.0.0-beta.1",
+  "description": "A simple package to manage BIP-32 wallets for evm blockchains, which implement the eip-7702 standard for gasless account abstraction",
+  "keywords": [
+    "wdk",
+    "wallet",
+    "bip-32",
+    "ethereum",
+    "eip-7702",
+    "erc-4337",
+    "account-abstraction",
+    "gasless"
+  ],
+  "author": "Tether",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/tetherto/wdk-wallet-evm-7702-gasless.git"
+  },
+  "main": "index.js",
+  "type": "module",
+  "types": "./types",
+  "scripts": {
+    "build:types": "tsc",
+    "lint": "standard",
+    "lint:fix": "standard --fix"
+  },
+  "dependencies": {
+    "@tetherto/wdk-wallet": "1.0.0-beta.7",
+    "@tetherto/wdk-wallet-evm": "1.0.0-beta.10",
+    "bare-node-runtime": "1.2.0",
+    "ethers": "6.14.4",
+    "permissionless": "0.2.57",
+    "viem": "2.47.5"
+  },
+  "devDependencies": {
+    "standard": "17.1.2",
+    "typescript": "5.8.3"
+  },
+  "overrides": {
+    "axios": "1.13.5",
+    "cookie": "1.0.2",
+    "tar": "7.5.7",
+    "tmp": "0.2.5",
+    "undici": "7.21.0",
+    "ws": "8.18.3",
+    "ox": "0.14.5"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "bare": "./bare.js",
+      "default": "./index.js"
+    },
+    "./package": {
+      "default": "./package.json"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "standard": {
+    "ignore": [
+      "bare.js",
+      "tests/**/*.js"
+    ]
+  }
+}
