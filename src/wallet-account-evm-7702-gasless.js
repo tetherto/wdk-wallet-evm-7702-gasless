@@ -86,7 +86,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     /** @private */
     this._ownerAccount = ownerAccount
-
   }
 
   /**
@@ -390,9 +389,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       value: BigInt(tx.value || 0)
     }))
 
-    const { isSponsored, paymasterToken } = config
-
-    if (!isSponsored) {
+    if (!config.isSponsored) {
       const approvalCalls = await this._getPaymasterApprovalCalls(config)
       calls.unshift(...approvalCalls)
     }
@@ -427,5 +424,4 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       throw err
     }
   }
-
 }

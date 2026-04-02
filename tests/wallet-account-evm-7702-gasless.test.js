@@ -47,7 +47,6 @@ const EXPECTED_TYPED_DATA_SIGNATURE = '0x1b319d2006b194b044eaff941404d39b8532de6
 const DUMMY_USER_OP_HASH = '0xabc123def456abc123def456abc123def456abc123def456abc123def456abc1'
 
 const SPONSORED_CONFIG = {
-  provider: 'https://dummy-provider.url/',
   delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
   bundlerUrl: 'https://dummy-bundler.url/',
   isSponsored: true

@@ -45,7 +45,6 @@ const PAYMASTER_TOKEN_CONFIG = {
 const MESSAGE = 'Dummy message to sign.'
 const SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
 
-// Import real modules BEFORE registering mocks (avoids jest ESM re-entrant factory bug)
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualViemAA = await import('viem/account-abstraction')
 
