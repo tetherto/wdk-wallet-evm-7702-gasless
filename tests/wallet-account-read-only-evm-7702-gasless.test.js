@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, jest, test } from '@jest/globals'
 const ADDRESS = '0x405005C7c4422390F4B334F64Cf20E0b767131d0'
 const SPENDER = '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd'
 const TOKEN_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
-const SECOND_TOKEN_ADDRESS = '0xa0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 
 const DUMMY_BALANCE = 1_000_000_000_000_000_000n
 const DUMMY_TOKEN_BALANCE = 1_000_000n
@@ -33,17 +32,6 @@ const SPONSORED_CONFIG = {
   bundlerUrl: 'https://dummy-bundler.url/',
   isSponsored: true
 }
-
-const PAYMASTER_TOKEN_CONFIG = {
-  provider: 'https://dummy-provider.url/',
-  delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
-  bundlerUrl: 'https://dummy-bundler.url/',
-  paymasterAddress: '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
-  paymasterToken: { address: TOKEN_ADDRESS }
-}
-
-const MESSAGE = 'Dummy message to sign.'
-const SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualViemAA = await import('viem/account-abstraction')
@@ -131,6 +119,7 @@ describe('WalletAccountReadOnlyEvm7702Gasless', () => {
 
   describe('getTokenBalances', () => {
     test('should return the correct token balances for multiple tokens', async () => {
+      const SECOND_TOKEN_ADDRESS = '0xa0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
       const DUMMY_BALANCES = {
         [TOKEN_ADDRESS]: DUMMY_TOKEN_BALANCE,
         [SECOND_TOKEN_ADDRESS]: 2_000_000n
@@ -146,6 +135,14 @@ describe('WalletAccountReadOnlyEvm7702Gasless', () => {
   })
 
   describe('getPaymasterTokenBalance', () => {
+    const PAYMASTER_TOKEN_CONFIG = {
+      provider: 'https://dummy-provider.url/',
+      delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
+      bundlerUrl: 'https://dummy-bundler.url/',
+      paymasterAddress: '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
+      paymasterToken: { address: TOKEN_ADDRESS }
+    }
+
     test('should return the paymaster token balance', async () => {
       getTokenBalanceMock.mockResolvedValue(DUMMY_TOKEN_BALANCE)
 
@@ -245,6 +242,9 @@ describe('WalletAccountReadOnlyEvm7702Gasless', () => {
   })
 
   describe('verify', () => {
+    const MESSAGE = 'Dummy message to sign.'
+    const SIGNATURE = '0xd130f94c52bf393206267278ac0b6009e14f11712578e5c1f7afe4a12685c5b96a77a0832692d96fc51f4bd403839572c55042ecbcc92d215879c5c8bb5778c51c'
+
     test('should return true for a valid signature', async () => {
       verifyMock.mockResolvedValue(true)
 

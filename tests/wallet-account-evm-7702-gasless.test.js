@@ -171,13 +171,11 @@ describe('WalletAccountEvm7702Gasless', () => {
     })
 
     test('should throw if the seed phrase is invalid', () => {
-      // eslint-disable-next-line no-new
       expect(() => { new WalletAccountEvm7702Gasless(INVALID_SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG) })
         .toThrow('The seed phrase is invalid.')
     })
 
     test('should throw if the path is invalid', () => {
-      // eslint-disable-next-line no-new
       expect(() => { new WalletAccountEvm7702Gasless(SEED_PHRASE, "a'/b/c", SPONSORED_CONFIG) })
         .toThrow('invalid path component')
     })
