@@ -95,8 +95,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Promise<bigint>} The chain id.
      */
     protected _getChainId(): Promise<bigint>;
-    /** @private */
-    private _getSmartAccount;
     /**
      * Returns a cached abstractionkit Bundler client.
      *
@@ -104,17 +102,15 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Bundler}
      */
     protected _getBundler(): Bundler;
-    /** @private */
-    private _getPaymaster;
     /**
      * Builds a paymaster-sponsored user operation for quoting or sending.
      * Does NOT sign. The caller adds the signature (and, for writes, the
      * pre-signed EIP-7702 authorization in `overrides.eip7702Auth`).
      *
-     * Passes `skipGasEstimation: true` to `createUserOperation` because the
-     * paymaster's `createPaymasterUserOperation` pipeline re-runs
-     * `eth_estimateUserOperationGas` after filling paymaster fields — one
-     * estimation round-trip is enough.
+     * Keeps AK's gas estimation enabled on `createUserOperation` so that the
+     * +55000 verificationGasLimit padding AK applies to its estimate is
+     * preserved. The paymaster pipeline re-estimates with its own fields,
+     * so this is an extra bundler round-trip we pay for correctness.
      *
      * @protected
      * @param {EvmTransaction[]} txs
@@ -132,18 +128,23 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
         };
     }>;
     /** @private */
-    private _buildPaymasterContext;
+    private _getSmartAccount;
+    /** @private */
+    private _getPaymaster;
     /** @private */
     private _getEvmReadOnlyAccount;
     /** @private */
-    private _getUserOperationGasCost;
+    private _buildPaymasterContext;
     /** @private */
     private _estimateFeesPerGas;
     /** @private */
     private _getTokenExchangeRate;
+    /** @private */
+    private _getUserOperationGasCost;
     private _smartAccount;
     private _bundler;
     private _paymaster;
+    private _evmReadOnlyAccount;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;

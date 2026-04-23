@@ -298,17 +298,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return this._chainId
   }
 
-  /** @private */
-  _getSmartAccount () {
-    if (!this._smartAccount) {
-      this._smartAccount = new Simple7702Account(this._address, {
-        entrypointAddress: ENTRYPOINT_V8,
-        delegateeAddress: this._config.delegationAddress
-      })
-    }
-    return this._smartAccount
-  }
-
   /**
    * Returns a cached abstractionkit Bundler client.
    *
@@ -320,40 +309,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       this._bundler = new Bundler(this._config.bundlerUrl)
     }
     return this._bundler
-  }
-
-  /** @private */
-  async _getPaymaster () {
-    if (!this._paymaster) {
-      const chainId = await this._getChainId()
-      const url = this._config.paymasterUrl || this._config.bundlerUrl
-      this._paymaster = new Erc7677Paymaster(url, { chainId })
-    }
-    return this._paymaster
-  }
-
-  /** @private */
-  _buildPaymasterContext (config) {
-    if (config.isSponsored) {
-      return config.sponsorshipPolicyId
-        ? { sponsorshipPolicyId: config.sponsorshipPolicyId }
-        : {}
-    }
-
-    if (config.paymasterToken) {
-      return { token: config.paymasterToken.address }
-    }
-
-    return {}
-  }
-
-  /** @private */
-  async _getEvmReadOnlyAccount () {
-    if (!this._evmReadOnlyAccount) {
-      const address = await this.getAddress()
-      this._evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
-    }
-    return this._evmReadOnlyAccount
   }
 
   /**
@@ -426,25 +381,48 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
-  async _getUserOperationGasCost (txs, config) {
-    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
+  _getSmartAccount () {
+    if (!this._smartAccount) {
+      this._smartAccount = new Simple7702Account(this._address, {
+        entrypointAddress: ENTRYPOINT_V8,
+        delegateeAddress: this._config.delegationAddress
+      })
+    }
+    return this._smartAccount
+  }
 
-    if (tokenQuote?.tokenCost != null) {
-      return tokenQuote.tokenCost
+  /** @private */
+  async _getPaymaster () {
+    if (!this._paymaster) {
+      const chainId = await this._getChainId()
+      const url = this._config.paymasterUrl || this._config.bundlerUrl
+      this._paymaster = new Erc7677Paymaster(url, { chainId })
+    }
+    return this._paymaster
+  }
+
+  /** @private */
+  async _getEvmReadOnlyAccount () {
+    if (!this._evmReadOnlyAccount) {
+      const address = await this.getAddress()
+      this._evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
+    }
+    return this._evmReadOnlyAccount
+  }
+
+  /** @private */
+  _buildPaymasterContext (config) {
+    if (config.isSponsored) {
+      return config.sponsorshipPolicyId
+        ? { sponsorshipPolicyId: config.sponsorshipPolicyId }
+        : {}
     }
 
-    const totalGas =
-      sponsoredOp.callGasLimit +
-      sponsoredOp.verificationGasLimit +
-      sponsoredOp.preVerificationGas +
-      (sponsoredOp.paymasterVerificationGasLimit || 0n) +
-      (sponsoredOp.paymasterPostOpGasLimit || 0n)
+    if (config.paymasterToken) {
+      return { token: config.paymasterToken.address }
+    }
 
-    const gasCostInWei = totalGas * sponsoredOp.maxFeePerGas
-
-    const exchangeRate = tokenQuote?.exchangeRate ?? await this._getTokenExchangeRate(config)
-
-    return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
+    return {}
   }
 
   /** @private */
@@ -511,5 +489,27 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     }
 
     return BigInt(token.exchangeRate)
+  }
+
+  /** @private */
+  async _getUserOperationGasCost (txs, config) {
+    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
+
+    if (tokenQuote?.tokenCost != null) {
+      return tokenQuote.tokenCost
+    }
+
+    const totalGas =
+      sponsoredOp.callGasLimit +
+      sponsoredOp.verificationGasLimit +
+      sponsoredOp.preVerificationGas +
+      (sponsoredOp.paymasterVerificationGasLimit || 0n) +
+      (sponsoredOp.paymasterPostOpGasLimit || 0n)
+
+    const gasCostInWei = totalGas * sponsoredOp.maxFeePerGas
+
+    const exchangeRate = tokenQuote?.exchangeRate ?? await this._getTokenExchangeRate(config)
+
+    return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
   }
 }
