@@ -18,13 +18,10 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { http } from 'viem'
-import { createPaymasterClient, formatUserOperationRequest } from 'viem/account-abstraction'
-import { toAccount } from 'viem/accounts'
-import { to7702SimpleSmartAccount } from 'permissionless/accounts'
-import { createSmartAccountClient } from 'permissionless'
+import { ENTRYPOINT_V8 } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
+import { buildUserOpV08TypedData } from './userop-typed-data.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
@@ -41,15 +38,9 @@ import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessSponsorshipPolicyConfig} Evm7702GaslessSponsorshipPolicyConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').TypedData} TypedData */
 
-/** @typedef {import('permissionless').SmartAccountClient} SmartAccountClient */
-
 const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
 const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
-
-const GAS_LIMIT_BUFFER = 150n
-const GAS_LIMIT_DIVISOR = 100n
-const EXCHANGE_RATE_PRECISION = 10n ** 18n
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -86,7 +77,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     /** @private */
     this._ownerAccount = ownerAccount
-
   }
 
   /**
@@ -238,125 +228,14 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /**
-   * Estimates the gas cost of a user operation using the smart account client.
+   * Produces a pre-signed EIP-7702 authorization tuple for the configured
+   * delegation target, or null if the EOA is already delegated there.
    *
-   * @protected
-   * @param {EvmTransaction[]} txs - The transactions.
-   * @param {Evm7702GaslessWalletConfig} config - The configuration.
-   * @returns {Promise<bigint>} The estimated gas cost.
+   * Signing happens inside wdk's MemorySafeSigningKey — the private key
+   * stays in its Uint8Array and is never stringified.
+   *
+   * @private
    */
-  async _getUserOperationGasCost (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-    const authorization = await this._getAuthorization(config)
-
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    const { isSponsored } = config
-
-    if (!isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
-    }
-
-    const prepareParams = { calls }
-
-    if (authorization) {
-      prepareParams.authorization = authorization
-    }
-
-    try {
-      const prepared = await smartAccountClient.prepareUserOperation(prepareParams)
-
-      const {
-        callGasLimit,
-        verificationGasLimit,
-        preVerificationGas,
-        paymasterVerificationGasLimit,
-        paymasterPostOpGasLimit,
-        maxFeePerGas
-      } = prepared
-
-      const totalGas = callGasLimit +
-        verificationGasLimit +
-        preVerificationGas +
-        (paymasterVerificationGasLimit || 0n) +
-        (paymasterPostOpGasLimit || 0n)
-
-      const gasCostInWei = totalGas * maxFeePerGas
-
-      const exchangeRate = await this._getTokenExchangeRate(config.paymasterToken.address, config)
-
-      return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
-    } catch (error) {
-      if (error.message.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
-      }
-
-      throw error
-    }
-  }
-
-  /** @private */
-  _getViemOwner () {
-    const ownerAccount = this._ownerAccount
-
-    return toAccount({
-      address: ownerAccount.address,
-      async signMessage ({ message }) {
-        const msg = typeof message === 'string' ? message : message.raw
-        return await ownerAccount.sign(msg)
-      },
-      async signTypedData (typedData) {
-        return await ownerAccount.signTypedData(typedData)
-      }
-    })
-  }
-
-  /** @private */
-  async _getSmartAccountClient (config = this._config) {
-    const cacheKey = this._getSmartAccountClientCacheKey(config)
-
-    if (!this._smartAccountClients.has(cacheKey)) {
-      const { publicClient, chain } = await this._getViemClients(config)
-      const viemOwner = this._getViemOwner()
-
-      const smartAccount = await to7702SimpleSmartAccount({
-        client: publicClient,
-        owner: viemOwner,
-        accountLogicAddress: config.delegationAddress
-      })
-
-      const bundlerUrl = config.bundlerUrl
-      const paymasterUrl = config.paymasterUrl
-
-      const paymasterOption = paymasterUrl
-        ? createPaymasterClient({ transport: http(paymasterUrl) })
-        : true
-
-      const isPimlico = bundlerUrl.includes('pimlico')
-
-      this._smartAccountClients.set(cacheKey, createSmartAccountClient({
-        account: smartAccount,
-        chain,
-        bundlerTransport: http(bundlerUrl),
-        paymaster: paymasterOption,
-        paymasterContext: this._buildPaymasterContext(config),
-        userOperation: {
-          estimateFeesPerGas: isPimlico
-            ? () => this._estimatePimlicoFeesPerGas()
-            : () => this._estimateFeesPerGas()
-        }
-      }))
-    }
-
-    return this._smartAccountClients.get(cacheKey)
-  }
-
-  /** @private */
   async _getAuthorization (config = this._config) {
     const delegation = await this._ownerAccount.getDelegation()
 
@@ -370,62 +249,49 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     })
 
     return {
+      chainId: BigInt(wdkAuth.chainId),
       address: wdkAuth.address,
-      chainId: Number(wdkAuth.chainId),
-      nonce: Number(wdkAuth.nonce),
+      nonce: BigInt(wdkAuth.nonce),
+      yParity: Number(wdkAuth.signature.yParity) === 0 ? '0x0' : '0x1',
       r: wdkAuth.signature.r,
-      s: wdkAuth.signature.s,
-      yParity: Number(wdkAuth.signature.yParity)
+      s: wdkAuth.signature.s
     }
   }
 
-  /** @private */
+  /**
+   * Builds, signs, and submits a user operation.
+   *
+   * The signature is produced by routing the EP v0.8 PackedUserOperation
+   * typed data through wdk's signTypedData. This keeps the private key
+   * inside MemorySafeSigningKey (Uint8Array-only, zeroable via dispose)
+   * and produces a signature byte-for-byte compatible with
+   * abstractionkit's createUserOperationHash.
+   *
+   * @private
+   */
   async _sendUserOperation (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-    const authorization = await this._getAuthorization(config)
+    const eip7702Auth = await this._getAuthorization(config)
 
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    const { isSponsored, paymasterToken } = config
-
-    if (!isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
-    }
-
-    const userOpParams = { calls }
-
-    if (authorization) {
-      userOpParams.authorization = authorization
-    }
-
+    let sponsoredOp
     try {
-      const estimated = await smartAccountClient.prepareUserOperation(userOpParams)
-
-      const prepared = await smartAccountClient.prepareUserOperation({
-        ...userOpParams,
-        callGasLimit: estimated.callGasLimit * GAS_LIMIT_BUFFER / GAS_LIMIT_DIVISOR,
-        verificationGasLimit: estimated.verificationGasLimit * GAS_LIMIT_BUFFER / GAS_LIMIT_DIVISOR
-      })
-
-      const signature = await smartAccountClient.account.signUserOperation(prepared)
-      const rpcParams = formatUserOperationRequest({ ...prepared, signature })
-
-      return await smartAccountClient.request({
-        method: 'eth_sendUserOperation',
-        params: [rpcParams, smartAccountClient.account.entryPoint.address]
-      })
+      const result = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
+      sponsoredOp = result.userOperation
     } catch (err) {
-      if (err.message.includes('AA50')) {
+      if (err?.message?.includes('AA50') || err?.cause?.message?.includes('AA50')) {
         throw new Error('Not enough funds on the account to repay the paymaster.')
       }
-
       throw err
     }
-  }
 
+    const chainId = await this._getChainId()
+    const typedData = buildUserOpV08TypedData(sponsoredOp, ENTRYPOINT_V8, chainId)
+
+    sponsoredOp.signature = await this._ownerAccount.signTypedData({
+      domain: typedData.domain,
+      types: typedData.types,
+      message: typedData.message
+    })
+
+    return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+  }
 }

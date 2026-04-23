@@ -18,13 +18,13 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
-import { createPublicClient, defineChain, hexToBigInt, http, numberToHex } from 'viem'
-import { createBundlerClient, createPaymasterClient, UserOperationReceiptNotFoundError } from 'viem/account-abstraction'
-import { toAccount } from 'viem/accounts'
-import { to7702SimpleSmartAccount } from 'permissionless/accounts'
-import { createSmartAccountClient } from 'permissionless'
-
-import { Contract } from 'ethers'
+import {
+  Bundler,
+  ENTRYPOINT_V8,
+  Erc7677Paymaster,
+  Simple7702Account,
+  sendJsonRpcRequest
+} from 'abstractionkit'
 
 import { ConfigurationError } from './errors.js'
 
@@ -39,16 +39,8 @@ import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').TypedData} TypedData */
 
-/** @typedef {import('viem').PublicClient} PublicClient */
-/** @typedef {import('viem').Chain} Chain */
-/** @typedef {import('viem/account-abstraction').BundlerClient} BundlerClient */
-
-/**
- * @typedef {Object} ViemClients
- * @property {PublicClient} publicClient - The viem public client.
- * @property {BundlerClient} bundlerClient - The viem bundler client.
- * @property {Chain} chain - The viem chain definition.
- */
+/** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
+/** @typedef {import('abstractionkit').UserOperationReceiptResult} UserOperationReceipt */
 
 /**
  * @typedef {Object} Evm7702GaslessWalletCommonConfig
@@ -67,7 +59,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} Evm7702GaslessPaymasterTokenConfig
  * @property {false} [isSponsored] - Whether the paymaster is sponsoring the account.
- * @property {string} paymasterAddress - The address of the paymaster smart contract.
+ * @property {string} [paymasterAddress] - Optional pin on the paymaster smart contract address. When omitted, it's derived from the paymaster RPC (pm_supportedERC20Tokens for Candide, pimlico_getTokenQuotes for Pimlico).
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee amount for transfer operations.
@@ -79,14 +71,9 @@ import { ConfigurationError } from './errors.js'
  *   Evm7702GaslessPaymasterTokenConfig)} Evm7702GaslessWalletConfig
  */
 
-/** @typedef {import('viem/account-abstraction').GetUserOperationReceiptReturnType} UserOperationReceipt */
-
 const GAS_FEE_MULTIPLIER = 150n
 const GAS_FEE_DIVISOR = 100n
 const EXCHANGE_RATE_PRECISION = 10n ** 18n
-const ENTRYPOINT_V08_ADDRESS = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
-const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
-const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
 
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
   /**
@@ -107,14 +94,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     this._config = config
 
     /**
-     * Cached viem clients.
-     *
-     * @protected
-     * @type {ViemClients | undefined}
-     */
-    this._viemClients = undefined
-
-    /**
      * The chain id.
      *
      * @protected
@@ -123,7 +102,16 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     this._chainId = undefined
 
     /** @private */
-    this._smartAccountClients = new Map()
+    this._smartAccount = undefined
+
+    /** @private */
+    this._bundler = undefined
+
+    /** @private */
+    this._paymasters = new Map()
+
+    /** @private */
+    this._evmReadOnlyAccount = undefined
   }
 
   /**
@@ -223,20 +211,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @returns {Promise<EvmTransactionReceipt | null>} The receipt, or null if the transaction has not been included in a block yet.
    */
   async getTransactionReceipt (hash) {
-    const { bundlerClient } = await this._getViemClients()
-
     const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
 
-    let userOpReceipt
-    try {
-      userOpReceipt = await bundlerClient.getUserOperationReceipt({ hash })
-    } catch (error) {
-      if (error instanceof UserOperationReceiptNotFoundError) {
-        return null
-      }
-
-      throw error
-    }
+    const userOpReceipt = await this._getBundler().getUserOperationReceipt(hash)
 
     if (!userOpReceipt || !userOpReceipt.receipt?.transactionHash) {
       return null
@@ -252,18 +229,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @returns {Promise<UserOperationReceipt | null>} The receipt, or null if the user operation has not been included in a block yet.
    */
   async getUserOperationReceipt (hash) {
-    const { bundlerClient } = await this._getViemClients()
-
-    try {
-      const receipt = await bundlerClient.getUserOperationReceipt({ hash })
-      return receipt
-    } catch (error) {
-      if (error instanceof UserOperationReceiptNotFoundError) {
-        return null
-      }
-
-      throw error
-    }
+    return await this._getBundler().getUserOperationReceipt(hash)
   }
 
   /**
@@ -313,58 +279,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @returns {void}
    */
   _validateConfig (config) {
-    if (!config.isSponsored) {
-      const missingFields = []
-
-      if (!config.paymasterAddress) {
-        missingFields.push('paymasterAddress')
-      }
-
-      if (!config.paymasterToken) {
-        missingFields.push('paymasterToken')
-      }
-
-      if (missingFields.length > 0) {
-        throw new ConfigurationError(`Missing required paymaster token configuration fields: ${missingFields.join(', ')}.`)
-      }
+    if (!config.isSponsored && !config.paymasterToken) {
+      throw new ConfigurationError('Missing required paymaster token configuration fields: paymasterToken.')
     }
-  }
-
-  /**
-   * Returns cached viem clients (publicClient + bundlerClient).
-   *
-   * @protected
-   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
-   * @returns {Promise<ViemClients>} The cached viem clients.
-   */
-  async _getViemClients (config = this._config) {
-    if (!this._viemClients) {
-      const chainId = await this._getChainId()
-
-      const chain = defineChain({
-        id: Number(chainId),
-        name: `chain-${chainId}`,
-        nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-        rpcUrls: {
-          default: { http: [config.provider] }
-        }
-      })
-
-      const publicClient = createPublicClient({
-        chain,
-        transport: http(config.provider)
-      })
-
-      const bundlerClient = createBundlerClient({
-        chain,
-        transport: http(config.bundlerUrl),
-        client: publicClient
-      })
-
-      this._viemClients = { publicClient, bundlerClient, chain }
-    }
-
-    return this._viemClients
   }
 
   /**
@@ -383,46 +300,62 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return this._chainId
   }
 
-  /** @private */
-  async _getPaymasterApprovalCalls (config) {
-    const { paymasterAddress, paymasterToken } = config
-    const tokenAddress = paymasterToken.address
-    const chainId = await this._getChainId()
-
-    const currentAllowance = await this.getAllowance(tokenAddress, paymasterAddress)
-
-    const approvalAmount = 10n ** 12n
-
-    if (currentAllowance >= approvalAmount) {
-      return []
-    }
-
-    const contract = new Contract(tokenAddress, ERC20_APPROVE_ABI)
-    const calls = []
-
-    if (chainId === 1n &&
-        tokenAddress.toLowerCase() === USDT_MAINNET_ADDRESS.toLowerCase() &&
-        currentAllowance > 0n) {
-      calls.push({
-        to: tokenAddress,
-        value: 0n,
-        data: contract.interface.encodeFunctionData('approve', [paymasterAddress, 0])
+  /**
+   * Returns a cached abstractionkit Simple7702Account bound to this EOA and
+   * the configured delegation target.
+   *
+   * @protected
+   * @returns {Simple7702Account}
+   */
+  _getSmartAccount () {
+    if (!this._smartAccount) {
+      this._smartAccount = new Simple7702Account(this._address, {
+        entrypointAddress: ENTRYPOINT_V8,
+        delegateeAddress: this._config.delegationAddress
       })
     }
+    return this._smartAccount
+  }
 
-    calls.push({
-      to: tokenAddress,
-      value: 0n,
-      data: contract.interface.encodeFunctionData('approve', [paymasterAddress, approvalAmount])
-    })
+  /**
+   * Returns a cached abstractionkit Bundler client.
+   *
+   * @protected
+   * @returns {Bundler}
+   */
+  _getBundler () {
+    if (!this._bundler) {
+      this._bundler = new Bundler(this._config.bundlerUrl)
+    }
+    return this._bundler
+  }
 
-    return calls
+  /**
+   * Returns a cached paymaster client keyed by the resolved paymaster URL.
+   * Pre-seeds the paymaster with the known chain id so the first paymaster
+   * call doesn't trigger a separate bundler `eth_chainId` round-trip.
+   *
+   * @protected
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The configuration.
+   * @returns {Promise<Erc7677Paymaster>}
+   */
+  async _getPaymaster (config) {
+    const url = config.paymasterUrl || config.bundlerUrl
+
+    if (!this._paymasters.has(url)) {
+      const chainId = await this._getChainId()
+      this._paymasters.set(url, new Erc7677Paymaster(url, { chainId }))
+    }
+
+    return this._paymasters.get(url)
   }
 
   /** @private */
   _buildPaymasterContext (config) {
-    if (config.isSponsored && config.sponsorshipPolicyId) {
-      return { sponsorshipPolicyId: config.sponsorshipPolicyId }
+    if (config.isSponsored) {
+      return config.sponsorshipPolicyId
+        ? { sponsorshipPolicyId: config.sponsorshipPolicyId }
+        : {}
     }
 
     if (config.paymasterToken) {
@@ -432,143 +365,159 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return {}
   }
 
-  /** @private */
+  /**
+   * Returns a cached WalletAccountReadOnlyEvm. Caching keeps ethers'
+   * JsonRpcProvider instance alive across calls, which memoizes the chain
+   * id after the first `getNetwork()` and avoids redundant `eth_chainId`
+   * calls on every read method.
+   *
+   * @private
+   */
   async _getEvmReadOnlyAccount () {
-    const address = await this.getAddress()
-
-    const evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
-
-    return evmReadOnlyAccount
-  }
-
-  /** @private */
-  _getSmartAccountClientCacheKey (config) {
-    if (config.isSponsored) {
-      return `sponsored:${config.paymasterUrl || config.bundlerUrl}`
-    }
-
-    return `paymaster:${config.paymasterUrl || config.bundlerUrl}:${config.paymasterAddress}`
-  }
-
-  /** @private */
-  async _getSmartAccountClient (config = this._config) {
-    const cacheKey = this._getSmartAccountClientCacheKey(config)
-
-    if (!this._smartAccountClients.has(cacheKey)) {
-      const { publicClient, chain } = await this._getViemClients(config)
+    if (!this._evmReadOnlyAccount) {
       const address = await this.getAddress()
+      this._evmReadOnlyAccount = new WalletAccountReadOnlyEvm(address, this._config)
+    }
+    return this._evmReadOnlyAccount
+  }
 
-      const dummyOwner = toAccount({ address })
+  /**
+   * Builds a paymaster-sponsored user operation for quoting or sending.
+   * Does NOT sign. The caller adds the signature (and, for writes, the
+   * pre-signed EIP-7702 authorization in `overrides.eip7702Auth`).
+   *
+   * Keeps AK's gas estimation enabled on `createUserOperation` so that the
+   * +55000 verificationGasLimit padding AK applies to its estimate is
+   * preserved. The paymaster pipeline re-estimates with its own fields,
+   * so this is an extra bundler round-trip we pay for correctness.
+   *
+   * @protected
+   * @param {EvmTransaction[]} txs
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
+   * @param {{ eip7702Auth?: object }} [overrides]
+   * @returns {Promise<{ userOperation: UserOperationV8, tokenQuote?: { exchangeRate: bigint, tokenCost: bigint } }>}
+   */
+  async _buildSponsoredUserOperation (txs, config, overrides = {}) {
+    const smartAccount = this._getSmartAccount()
 
-      const smartAccount = await to7702SimpleSmartAccount({
-        client: publicClient,
-        owner: dummyOwner,
-        accountLogicAddress: config.delegationAddress
-      })
+    const calls = txs.map(tx => ({
+      to: tx.to,
+      value: BigInt(tx.value || 0),
+      data: tx.data || '0x'
+    }))
 
-      const bundlerUrl = config.bundlerUrl
-      const paymasterUrl = config.paymasterUrl
+    const { maxFeePerGas, maxPriorityFeePerGas } = await this._estimateFeesPerGas(config)
 
-      const paymasterOption = paymasterUrl
-        ? createPaymasterClient({ transport: http(paymasterUrl) })
-        : true
-
-      const isPimlico = bundlerUrl.includes('pimlico')
-
-      this._smartAccountClients.set(cacheKey, createSmartAccountClient({
-        account: smartAccount,
-        chain,
-        bundlerTransport: http(bundlerUrl),
-        paymaster: paymasterOption,
-        paymasterContext: this._buildPaymasterContext(config),
-        userOperation: {
-          estimateFeesPerGas: isPimlico
-            ? () => this._estimatePimlicoFeesPerGas()
-            : () => this._estimateFeesPerGas()
-        }
-      }))
+    const createOverrides = {
+      ...(overrides.eip7702Auth ? { eip7702Auth: overrides.eip7702Auth } : {}),
+      maxFeePerGas,
+      maxPriorityFeePerGas
     }
 
-    return this._smartAccountClients.get(cacheKey)
+    const op = await smartAccount.createUserOperation(
+      calls,
+      typeof config.provider === 'string' ? config.provider : undefined,
+      config.bundlerUrl,
+      createOverrides
+    )
+
+    const paymaster = await this._getPaymaster(config)
+    const paymasterContext = this._buildPaymasterContext(config)
+    const paymasterUrl = config.paymasterUrl || config.bundlerUrl
+
+    const { userOperation: sponsoredOp, tokenQuote } = await paymaster.createPaymasterUserOperation(
+      smartAccount,
+      op,
+      config.bundlerUrl,
+      paymasterContext
+    )
+
+    // Pin paymaster address for AA41 debugging when the user explicitly set one.
+    if (!config.isSponsored && config.paymasterAddress && sponsoredOp.paymaster &&
+        sponsoredOp.paymaster.toLowerCase() !== config.paymasterAddress.toLowerCase()) {
+      throw new ConfigurationError(
+        `paymasterAddress mismatch: configured ${config.paymasterAddress} but RPC ${paymasterUrl} returned ${sponsoredOp.paymaster}.`
+      )
+    }
+
+    return { userOperation: sponsoredOp, tokenQuote }
   }
 
   /** @private */
   async _getUserOperationGasCost (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    if (!config.isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
-    }
-
+    let result
     try {
-      const prepared = await smartAccountClient.prepareUserOperation({ calls })
-
-      const {
-        callGasLimit,
-        verificationGasLimit,
-        preVerificationGas,
-        paymasterVerificationGasLimit,
-        paymasterPostOpGasLimit,
-        maxFeePerGas
-      } = prepared
-
-      const totalGas = callGasLimit +
-        verificationGasLimit +
-        preVerificationGas +
-        (paymasterVerificationGasLimit || 0n) +
-        (paymasterPostOpGasLimit || 0n)
-
-      const gasCostInWei = totalGas * maxFeePerGas
-
-      const exchangeRate = await this._getTokenExchangeRate(config.paymasterToken.address, config)
-
-      return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
+      result = await this._buildSponsoredUserOperation(txs, config)
     } catch (error) {
-      if (error.message.includes('AA50')) {
+      if (error?.message?.includes('AA50') || error?.cause?.message?.includes('AA50')) {
         throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
       }
-
       throw error
     }
-  }
 
-  /** @private */
-  async _estimatePimlicoFeesPerGas () {
-    const { bundlerClient } = await this._getViemClients()
+    const { userOperation: sponsoredOp, tokenQuote } = result
 
-    const { fast } = await bundlerClient.request({
-      method: 'pimlico_getUserOperationGasPrice'
-    })
-
-    return {
-      maxFeePerGas: BigInt(fast.maxFeePerGas),
-      maxPriorityFeePerGas: BigInt(fast.maxPriorityFeePerGas)
+    // Fast path: the paymaster already computed the token-denominated cost.
+    // Available on Candide/Pimlico token paymaster flows via AK 0.3.3.
+    if (tokenQuote?.tokenCost != null) {
+      return tokenQuote.tokenCost
     }
+
+    // Fallback for providers that don't surface tokenQuote (or unusual
+    // flows). Compute the cost from the paymasterized gas limits + our
+    // own exchange-rate fetch.
+    const totalGas =
+      sponsoredOp.callGasLimit +
+      sponsoredOp.verificationGasLimit +
+      sponsoredOp.preVerificationGas +
+      (sponsoredOp.paymasterVerificationGasLimit || 0n) +
+      (sponsoredOp.paymasterPostOpGasLimit || 0n)
+
+    const gasCostInWei = totalGas * sponsoredOp.maxFeePerGas
+
+    const exchangeRate = tokenQuote?.exchangeRate ?? await this._getTokenExchangeRate(config)
+
+    return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
   }
 
-  /** @private */
-  async _estimateFeesPerGas () {
-    const { publicClient } = await this._getViemClients()
+  /**
+   * Estimates gas fees per gas. Uses Pimlico's recommended fast tier when
+   * the bundler URL points at Pimlico (otherwise UserOps get dropped by
+   * their mempool), and for other providers queries `eth_gasPrice` +
+   * `eth_maxPriorityFeePerGas` directly via `sendJsonRpcRequest` and
+   * scales the result by 1.5x.
+   *
+   * We hit the RPC directly rather than going through ethers
+   * `JsonRpcProvider.getFeeData()` because ethers' provider triggers
+   * parasitic `eth_chainId` calls on every batched send (one via
+   * `_detectNetwork`, one via its poll timer). Going direct cuts 3 RPCs
+   * per quote call.
+   *
+   * @private
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
+   * @returns {Promise<{ maxFeePerGas: bigint, maxPriorityFeePerGas: bigint }>}
+   */
+  async _estimateFeesPerGas (config) {
+    if (config.bundlerUrl.includes('pimlico')) {
+      const { fast } = await sendJsonRpcRequest(config.bundlerUrl, 'pimlico_getUserOperationGasPrice', [])
 
-    const [block, maxPriorityFeePerGas] = await Promise.all([
-      publicClient.getBlock({ blockTag: 'latest' }),
-      publicClient.estimateMaxPriorityFeePerGas()
+      return {
+        maxFeePerGas: BigInt(fast.maxFeePerGas),
+        maxPriorityFeePerGas: BigInt(fast.maxPriorityFeePerGas)
+      }
+    }
+
+    if (typeof config.provider !== 'string') {
+      throw new Error('EIP-1193 provider is not supported for fee estimation. Pass the RPC URL as a string.')
+    }
+
+    const [gasPrice, tip] = await Promise.all([
+      sendJsonRpcRequest(config.provider, 'eth_gasPrice', []),
+      sendJsonRpcRequest(config.provider, 'eth_maxPriorityFeePerGas', []).catch(() => '0x0')
     ])
 
-    const baseFeePerGas = block.baseFeePerGas
-
-    if (!baseFeePerGas) {
-      throw new Error('Base fee not available — chain may not support EIP-1559.')
-    }
-
-    const maxFeePerGas = baseFeePerGas + maxPriorityFeePerGas
+    const maxFeePerGas = BigInt(gasPrice)
+    const maxPriorityFeePerGas = BigInt(tip) || maxFeePerGas
 
     return {
       maxFeePerGas: maxFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR,
@@ -577,41 +526,25 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
-  async _getTokenExchangeRate (tokenAddress, config) {
-    const isPimlico = config.bundlerUrl.includes('pimlico')
+  async _getTokenExchangeRate (config) {
+    const tokenAddress = config.paymasterToken.address
+    const paymasterUrl = config.paymasterUrl || config.bundlerUrl
 
-    if (isPimlico) {
-      return await this._getPimlicoTokenExchangeRate(tokenAddress)
+    if (paymasterUrl.includes('pimlico')) {
+      const chainId = await this._getChainId()
+      const chainIdHex = '0x' + chainId.toString(16)
+
+      const res = await sendJsonRpcRequest(paymasterUrl, 'pimlico_getTokenQuotes', [
+        { tokens: [tokenAddress] },
+        ENTRYPOINT_V8,
+        chainIdHex
+      ])
+
+      return BigInt(res.quotes[0].exchangeRate)
     }
 
-    return await this._getCandideTokenExchangeRate(tokenAddress, config.paymasterUrl || config.bundlerUrl)
-  }
-
-  /** @private */
-  async _getPimlicoTokenExchangeRate (tokenAddress) {
-    const { bundlerClient } = await this._getViemClients()
-    const chainId = await this._getChainId()
-
-    const res = await bundlerClient.request({
-      method: 'pimlico_getTokenQuotes',
-      params: [
-        { tokens: [tokenAddress] },
-        ENTRYPOINT_V08_ADDRESS,
-        numberToHex(Number(chainId))
-      ]
-    })
-
-    return hexToBigInt(res.quotes[0].exchangeRate)
-  }
-
-  /** @private */
-  async _getCandideTokenExchangeRate (tokenAddress, paymasterUrl) {
-    const client = createPublicClient({ transport: http(paymasterUrl) })
-
-    const res = await client.request({
-      method: 'pm_supportedERC20Tokens',
-      params: [ENTRYPOINT_V08_ADDRESS]
-    })
+    // Candide (and generic ERC-7677 providers that mirror Candide's shape).
+    const res = await sendJsonRpcRequest(paymasterUrl, 'pm_supportedERC20Tokens', [ENTRYPOINT_V8])
 
     const token = res.tokens.find(
       t => t.address.toLowerCase() === tokenAddress.toLowerCase()
@@ -621,6 +554,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       throw new Error(`Token ${tokenAddress} is not supported by the paymaster.`)
     }
 
-    return hexToBigInt(token.exchangeRate)
+    return BigInt(token.exchangeRate)
   }
 }

@@ -86,20 +86,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      */
     dispose(): void;
     /** @private */
-    private _getViemOwner;
-    /** @private */
-    private _getSmartAccountClient;
-    /** @private */
     private _getAuthorization;
-    /**
-     * Estimates the gas cost of a user operation using the smart account client.
-     *
-     * @protected
-     * @param {EvmTransaction[]} txs - The transactions.
-     * @param {Evm7702GaslessWalletConfig} config - The configuration.
-     * @returns {Promise<bigint>} The estimated gas cost.
-     */
-    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Evm7702GaslessWalletConfig): Promise<bigint>;
     /** @private */
     private _sendUserOperation;
 }
@@ -114,6 +101,5 @@ export type Evm7702GaslessWalletConfig = import("./wallet-account-read-only-evm-
 export type Evm7702GaslessPaymasterTokenConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
 export type TypedData = import("./wallet-account-read-only-evm-7702-gasless.js").TypedData;
-export type SmartAccountClient = import("permissionless").SmartAccountClient;
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js';
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm';

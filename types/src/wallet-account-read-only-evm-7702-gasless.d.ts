@@ -14,13 +14,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      */
     protected _config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">;
     /**
-     * Cached viem clients.
-     *
-     * @protected
-     * @type {ViemClients | undefined}
-     */
-    protected _viemClients: ViemClients | undefined;
-    /**
      * The chain id.
      *
      * @protected
@@ -96,42 +89,75 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      */
     protected _validateConfig(config: Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>): void;
     /**
-     * Returns cached viem clients (publicClient + bundlerClient).
-     *
-     * @protected
-     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
-     * @returns {Promise<ViemClients>} The cached viem clients.
-     */
-    protected _getViemClients(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<ViemClients>;
-    /**
      * Returns the chain id.
      *
      * @protected
      * @returns {Promise<bigint>} The chain id.
      */
     protected _getChainId(): Promise<bigint>;
+    /**
+     * Returns a cached abstractionkit Simple7702Account bound to this EOA and
+     * the configured delegation target.
+     *
+     * @protected
+     * @returns {Simple7702Account}
+     */
+    protected _getSmartAccount(): Simple7702Account;
+    /**
+     * Returns a cached abstractionkit Bundler client.
+     *
+     * @protected
+     * @returns {Bundler}
+     */
+    protected _getBundler(): Bundler;
+    /**
+     * Returns a cached paymaster client keyed by the resolved paymaster URL.
+     * Pre-seeds the paymaster with the known chain id so the first paymaster
+     * call doesn't trigger a separate bundler `eth_chainId` round-trip.
+     *
+     * @protected
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The configuration.
+     * @returns {Promise<Erc7677Paymaster>}
+     */
+    protected _getPaymaster(config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<Erc7677Paymaster>;
+    /**
+     * Builds a paymaster-sponsored user operation for quoting or sending.
+     * Does NOT sign. The caller adds the signature (and, for writes, the
+     * pre-signed EIP-7702 authorization in `overrides.eip7702Auth`).
+     *
+     * Passes `skipGasEstimation: true` to `createUserOperation` because the
+     * paymaster's `createPaymasterUserOperation` pipeline re-runs
+     * `eth_estimateUserOperationGas` after filling paymaster fields — one
+     * estimation round-trip is enough.
+     *
+     * @protected
+     * @param {EvmTransaction[]} txs
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
+     * @param {{ eip7702Auth?: object }} [overrides]
+     * @returns {Promise<{ userOperation: UserOperationV8, tokenQuote?: { exchangeRate: bigint, tokenCost: bigint } }>}
+     */
+    protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: {
+        eip7702Auth?: object;
+    }): Promise<{
+        userOperation: UserOperationV8;
+        tokenQuote?: {
+            exchangeRate: bigint;
+            tokenCost: bigint;
+        };
+    }>;
     /** @private */
     private _buildPaymasterContext;
-    /** @private */
-    private _getPaymasterApprovalCalls;
-    /** @private */
-    private _getSmartAccountClientCacheKey;
-    /** @private */
-    private _getSmartAccountClient;
     /** @private */
     private _getEvmReadOnlyAccount;
     /** @private */
     private _getUserOperationGasCost;
     /** @private */
-    private _estimatePimlicoFeesPerGas;
-    /** @private */
     private _estimateFeesPerGas;
     /** @private */
     private _getTokenExchangeRate;
-    /** @private */
-    private _getPimlicoTokenExchangeRate;
-    /** @private */
-    private _getCandideTokenExchangeRate;
+    private _smartAccount;
+    private _bundler;
+    private _paymasters;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
@@ -140,23 +166,8 @@ export type EvmTransferOptions = import("@tetherto/wdk-wallet-evm").EvmTransferO
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
 export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
-export type PublicClient = import("viem").PublicClient;
-export type Chain = import("viem").Chain;
-export type BundlerClient = import("viem/account-abstraction").BundlerClient;
-export type ViemClients = {
-    /**
-     * - The viem public client.
-     */
-    publicClient: PublicClient;
-    /**
-     * - The viem bundler client.
-     */
-    bundlerClient: BundlerClient;
-    /**
-     * - The viem chain definition.
-     */
-    chain: Chain;
-};
+export type UserOperationV8 = import("abstractionkit").UserOperationV8;
+export type UserOperationReceipt = import("abstractionkit").UserOperationReceiptResult;
 export type Evm7702GaslessWalletCommonConfig = {
     /**
      * - The url of the rpc provider, or an instance of a class that implements eip-1193.
@@ -191,9 +202,9 @@ export type Evm7702GaslessPaymasterTokenConfig = {
      */
     isSponsored?: false;
     /**
-     * - The address of the paymaster smart contract.
+     * - Optional pin on the paymaster smart contract address. When omitted, it's derived from the paymaster RPC (pm_supportedERC20Tokens for Candide, pimlico_getTokenQuotes for Pimlico).
      */
-    paymasterAddress: string;
+    paymasterAddress?: string;
     /**
      * - The paymaster token configuration.
      */
@@ -206,5 +217,7 @@ export type Evm7702GaslessPaymasterTokenConfig = {
     transferMaxFee?: number | bigint;
 };
 export type Evm7702GaslessWalletConfig = Evm7702GaslessWalletCommonConfig & (Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig);
-export type UserOperationReceipt = import("viem/account-abstraction").GetUserOperationReceiptReturnType;
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
+import { Simple7702Account } from 'abstractionkit';
+import { Bundler } from 'abstractionkit';
+import { Erc7677Paymaster } from 'abstractionkit';
