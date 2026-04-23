@@ -108,7 +108,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     this._bundler = undefined
 
     /** @private */
-    this._paymasters = new Map()
+    this._paymaster = undefined
 
     /** @private */
     this._evmReadOnlyAccount = undefined
@@ -325,15 +325,13 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /** @private */
-  async _getPaymaster (config) {
-    const url = config.paymasterUrl || config.bundlerUrl
-
-    if (!this._paymasters.has(url)) {
+  async _getPaymaster () {
+    if (!this._paymaster) {
       const chainId = await this._getChainId()
-      this._paymasters.set(url, new Erc7677Paymaster(url, { chainId }))
+      const url = this._config.paymasterUrl || this._config.bundlerUrl
+      this._paymaster = new Erc7677Paymaster(url, { chainId })
     }
-
-    return this._paymasters.get(url)
+    return this._paymaster
   }
 
   /** @private */
@@ -393,7 +391,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       maxPriorityFeePerGas
     }
 
-    const paymaster = await this._getPaymaster(config)
+    const paymaster = await this._getPaymaster()
     const paymasterContext = this._buildPaymasterContext(config)
     const paymasterUrl = config.paymasterUrl || config.bundlerUrl
 
