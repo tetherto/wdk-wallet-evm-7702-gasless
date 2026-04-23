@@ -508,7 +508,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     }
 
     if (typeof config.provider !== 'string') {
-      throw new Error('EIP-1193 provider is not supported for fee estimation. Pass the RPC URL as a string.')
+      throw new ConfigurationError('EIP-1193 provider is not supported for fee estimation. Pass the RPC URL as a string.')
     }
 
     const [gasPrice, tip] = await Promise.all([
