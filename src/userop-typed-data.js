@@ -85,7 +85,7 @@ function buildPaymasterAndData (userOp) {
  * @param {UserOperationV8} userOp - The user operation.
  * @param {string} entrypointAddress - EntryPoint v0.8 contract address.
  * @param {bigint} chainId - Target chain id.
- * @returns {{ domain: object, types: object, message: object }} Typed-data payload.
+ * @returns {{ domain: Object, types: Object, message: Object }} Typed-data payload.
  */
 export function buildUserOpV08TypedData (userOp, entrypointAddress, chainId) {
   const initCode = buildInitCode(userOp)

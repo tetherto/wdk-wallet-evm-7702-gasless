@@ -394,7 +394,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @protected
    * @param {EvmTransaction[]} txs
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
-   * @param {{ eip7702Auth?: object }} [overrides]
+   * @param {{ eip7702Auth?: Object }} [overrides]
    * @returns {Promise<{ userOperation: UserOperationV8, tokenQuote?: { exchangeRate: bigint, tokenCost: bigint } }>}
    */
   async _buildSponsoredUserOperation (txs, config, overrides = {}) {
