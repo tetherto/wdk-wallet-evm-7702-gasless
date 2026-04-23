@@ -179,10 +179,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   async sendTransaction (tx, config) {
     const mergedConfig = { ...this._config, ...config }
 
-    if (config) {
-      this._validateConfig(mergedConfig)
-    }
-
     const { fee } = await this.quoteSendTransaction(tx, config)
 
     const hash = await this._sendUserOperation([tx].flat(), mergedConfig)
@@ -199,10 +195,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    */
   async transfer (options, config) {
     const mergedConfig = { ...this._config, ...config }
-
-    if (config) {
-      this._validateConfig(mergedConfig)
-    }
 
     const { isSponsored, transferMaxFee } = mergedConfig
 
