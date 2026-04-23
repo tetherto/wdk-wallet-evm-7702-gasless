@@ -9,11 +9,25 @@
  * @param {UserOperationV8} userOp - The user operation.
  * @param {string} entrypointAddress - EntryPoint v0.8 contract address.
  * @param {bigint} chainId - Target chain id.
- * @returns {{ domain: Object, types: Object, message: Object }} Typed-data payload.
+ * @returns {UserOpTypedData} Typed-data payload.
  */
-export function buildUserOpV08TypedData(userOp: UserOperationV8, entrypointAddress: string, chainId: bigint): {
+export function buildUserOpV08TypedData(userOp: UserOperationV8, entrypointAddress: string, chainId: bigint): UserOpTypedData;
+export type UserOperationV8 = import("abstractionkit").UserOperationV8;
+export type UserOpTypedData = {
+    /**
+     * - The EIP-712 domain separator.
+     */
     domain: Object;
+    /**
+     * - The EIP-712 type definitions.
+     */
     types: Object;
+    /**
+     * - The name of the primary type being signed.
+     */
+    primaryType: string;
+    /**
+     * - The PackedUserOperation message body.
+     */
     message: Object;
 };
-export type UserOperationV8 = import("abstractionkit").UserOperationV8;

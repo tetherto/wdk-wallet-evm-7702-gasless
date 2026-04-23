@@ -16,6 +16,14 @@
 
 /** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
 
+/**
+ * @typedef {Object} UserOpTypedData
+ * @property {Object} domain - The EIP-712 domain separator.
+ * @property {Object} types - The EIP-712 type definitions.
+ * @property {string} primaryType - The name of the primary type being signed.
+ * @property {Object} message - The PackedUserOperation message body.
+ */
+
 // Produces the EIP-712 typed-data payload the EntryPoint v0.8 verifier
 // expects. The digest over this payload equals abstractionkit's
 // createUserOperationHash(op, entrypoint, chainId) — so a signature from
@@ -85,7 +93,7 @@ function buildPaymasterAndData (userOp) {
  * @param {UserOperationV8} userOp - The user operation.
  * @param {string} entrypointAddress - EntryPoint v0.8 contract address.
  * @param {bigint} chainId - Target chain id.
- * @returns {{ domain: Object, types: Object, message: Object }} Typed-data payload.
+ * @returns {UserOpTypedData} Typed-data payload.
  */
 export function buildUserOpV08TypedData (userOp, entrypointAddress, chainId) {
   const initCode = buildInitCode(userOp)
