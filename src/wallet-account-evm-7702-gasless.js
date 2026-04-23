@@ -227,15 +227,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     this._ownerAccount.dispose()
   }
 
-  /**
-   * Produces a pre-signed EIP-7702 authorization tuple for the configured
-   * delegation target, or null if the EOA is already delegated there.
-   *
-   * Signing happens inside wdk's MemorySafeSigningKey — the private key
-   * stays in its Uint8Array and is never stringified.
-   *
-   * @private
-   */
+  /** @private */
   async _getAuthorization (config = this._config) {
     const delegation = await this._ownerAccount.getDelegation()
 
@@ -258,17 +250,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
   }
 
-  /**
-   * Builds, signs, and submits a user operation.
-   *
-   * The signature is produced by routing the EP v0.8 PackedUserOperation
-   * typed data through wdk's signTypedData. This keeps the private key
-   * inside MemorySafeSigningKey (Uint8Array-only, zeroable via dispose)
-   * and produces a signature byte-for-byte compatible with
-   * abstractionkit's createUserOperationHash.
-   *
-   * @private
-   */
+  /** @private */
   async _sendUserOperation (txs, config) {
     const eip7702Auth = await this._getAuthorization(config)
 

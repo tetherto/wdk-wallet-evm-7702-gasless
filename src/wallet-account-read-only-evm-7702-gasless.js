@@ -300,13 +300,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return this._chainId
   }
 
-  /**
-   * Returns a cached abstractionkit Simple7702Account bound to this EOA and
-   * the configured delegation target.
-   *
-   * @private
-   * @returns {Simple7702Account}
-   */
+  /** @private */
   _getSmartAccount () {
     if (!this._smartAccount) {
       this._smartAccount = new Simple7702Account(this._address, {
@@ -330,15 +324,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return this._bundler
   }
 
-  /**
-   * Returns a cached paymaster client keyed by the resolved paymaster URL.
-   * Pre-seeds the paymaster with the known chain id so the first paymaster
-   * call doesn't trigger a separate bundler `eth_chainId` round-trip.
-   *
-   * @private
-   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The configuration.
-   * @returns {Promise<Erc7677Paymaster>}
-   */
+  /** @private */
   async _getPaymaster (config) {
     const url = config.paymasterUrl || config.bundlerUrl
 
@@ -365,14 +351,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return {}
   }
 
-  /**
-   * Returns a cached WalletAccountReadOnlyEvm. Caching keeps ethers'
-   * JsonRpcProvider instance alive across calls, which memoizes the chain
-   * id after the first `getNetwork()` and avoids redundant `eth_chainId`
-   * calls on every read method.
-   *
-   * @private
-   */
+  /** @private */
   async _getEvmReadOnlyAccount () {
     if (!this._evmReadOnlyAccount) {
       const address = await this.getAddress()
@@ -472,23 +451,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
   }
 
-  /**
-   * Estimates gas fees per gas. Uses Pimlico's recommended fast tier when
-   * the bundler URL points at Pimlico (otherwise UserOps get dropped by
-   * their mempool), and for other providers queries `eth_gasPrice` +
-   * `eth_maxPriorityFeePerGas` directly via `sendJsonRpcRequest` and
-   * scales the result by 1.5x.
-   *
-   * We hit the RPC directly rather than going through ethers
-   * `JsonRpcProvider.getFeeData()` because ethers' provider triggers
-   * parasitic `eth_chainId` calls on every batched send (one via
-   * `_detectNetwork`, one via its poll timer). Going direct cuts 3 RPCs
-   * per quote call.
-   *
-   * @private
-   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
-   * @returns {Promise<{ maxFeePerGas: bigint, maxPriorityFeePerGas: bigint }>}
-   */
+  /** @private */
   async _estimateFeesPerGas (config) {
     if (config.bundlerUrl.includes('pimlico')) {
       const { fast } = await sendJsonRpcRequest(config.bundlerUrl, 'pimlico_getUserOperationGasPrice', [])

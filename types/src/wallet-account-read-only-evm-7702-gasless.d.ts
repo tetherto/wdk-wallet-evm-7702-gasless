@@ -95,12 +95,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Promise<bigint>} The chain id.
      */
     protected _getChainId(): Promise<bigint>;
-    /**
-     * Returns a cached abstractionkit Simple7702Account bound to this EOA and
-     * the configured delegation target.
-     *
-     * @private
-     */
+    /** @private */
     private _getSmartAccount;
     /**
      * Returns a cached abstractionkit Bundler client.
@@ -109,13 +104,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Bundler}
      */
     protected _getBundler(): Bundler;
-    /**
-     * Returns a cached paymaster client keyed by the resolved paymaster URL.
-     * Pre-seeds the paymaster with the known chain id so the first paymaster
-     * call doesn't trigger a separate bundler `eth_chainId` round-trip.
-     *
-     * @private
-     */
+    /** @private */
     private _getPaymaster;
     /**
      * Builds a paymaster-sponsored user operation for quoting or sending.
