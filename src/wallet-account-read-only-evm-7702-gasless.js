@@ -41,6 +41,18 @@ import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
 /** @typedef {import('abstractionkit').UserOperationReceiptResult} UserOperationReceipt */
+/** @typedef {import('abstractionkit').TokenQuote} TokenQuote */
+
+/**
+ * @typedef {Object} BuildSponsoredUserOperationOverrides
+ * @property {Object} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+ */
+
+/**
+ * @typedef {Object} SponsoredUserOperation
+ * @property {UserOperationV8} userOperation - The paymaster-populated user operation, ready to sign.
+ * @property {TokenQuote} [tokenQuote] - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+ */
 
 /**
  * @typedef {Object} Evm7702GaslessWalletCommonConfig
@@ -302,7 +314,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * Returns a cached abstractionkit Bundler client.
    *
    * @protected
-   * @returns {Bundler}
+   * @returns {Bundler} The cached bundler client, lazily created on first use.
    */
   _getBundler () {
     if (!this._bundler) {
@@ -322,10 +334,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * so this is an extra bundler round-trip we pay for correctness.
    *
    * @protected
-   * @param {EvmTransaction[]} txs
-   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
-   * @param {{ eip7702Auth?: Object }} [overrides]
-   * @returns {Promise<{ userOperation: UserOperationV8, tokenQuote?: { exchangeRate: bigint, tokenCost: bigint } }>}
+   * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration (base config merged with any per-call overrides).
+   * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (currently only the pre-signed 7702 authorization).
+   * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
    */
   async _buildSponsoredUserOperation (txs, config, overrides = {}) {
     const smartAccount = this._getSmartAccount()
@@ -436,22 +448,32 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       }
     }
 
-    if (typeof config.provider !== 'string') {
-      throw new ConfigurationError('EIP-1193 provider is not supported for fee estimation. Pass the RPC URL as a string.')
+    let maxFeePerGas, maxPriorityFeePerGas
+
+    if (typeof config.provider === 'string') {
+      const [gasPrice, tip] = await Promise.all([
+        sendJsonRpcRequest(config.provider, 'eth_gasPrice', []),
+        sendJsonRpcRequest(config.provider, 'eth_maxPriorityFeePerGas', []).catch(error => {
+          if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
+            return '0x0'
+          }
+          throw error
+        })
+      ])
+
+      maxFeePerGas = BigInt(gasPrice)
+      maxPriorityFeePerGas = BigInt(tip) || maxFeePerGas
+    } else {
+      const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
+      const feeData = await evmReadOnlyAccount._provider.getFeeData()
+
+      if (feeData.maxFeePerGas == null || feeData.maxPriorityFeePerGas == null) {
+        throw new ConfigurationError('Provider did not return EIP-1559 fee data.')
+      }
+
+      maxFeePerGas = feeData.maxFeePerGas
+      maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
     }
-
-    const [gasPrice, tip] = await Promise.all([
-      sendJsonRpcRequest(config.provider, 'eth_gasPrice', []),
-      sendJsonRpcRequest(config.provider, 'eth_maxPriorityFeePerGas', []).catch(error => {
-        if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
-          return '0x0'
-        }
-        throw error
-      })
-    ])
-
-    const maxFeePerGas = BigInt(gasPrice)
-    const maxPriorityFeePerGas = BigInt(tip) || maxFeePerGas
 
     return {
       maxFeePerGas: maxFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR,

@@ -99,7 +99,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Returns a cached abstractionkit Bundler client.
      *
      * @protected
-     * @returns {Bundler}
+     * @returns {Bundler} The cached bundler client, lazily created on first use.
      */
     protected _getBundler(): Bundler;
     /**
@@ -113,20 +113,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * so this is an extra bundler round-trip we pay for correctness.
      *
      * @protected
-     * @param {EvmTransaction[]} txs
-     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config
-     * @param {{ eip7702Auth?: Object }} [overrides]
-     * @returns {Promise<{ userOperation: UserOperationV8, tokenQuote?: { exchangeRate: bigint, tokenCost: bigint } }>}
+     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration (base config merged with any per-call overrides).
+     * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (currently only the pre-signed 7702 authorization).
+     * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
      */
-    protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: {
-        eip7702Auth?: Object;
-    }): Promise<{
-        userOperation: UserOperationV8;
-        tokenQuote?: {
-            exchangeRate: bigint;
-            tokenCost: bigint;
-        };
-    }>;
+    protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: BuildSponsoredUserOperationOverrides): Promise<SponsoredUserOperation>;
     /** @private */
     private _getSmartAccount;
     /** @private */
@@ -155,6 +147,23 @@ export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransa
 export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type UserOperationV8 = import("abstractionkit").UserOperationV8;
 export type UserOperationReceipt = import("abstractionkit").UserOperationReceiptResult;
+export type TokenQuote = import("abstractionkit").TokenQuote;
+export type BuildSponsoredUserOperationOverrides = {
+    /**
+     * - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+     */
+    eip7702Auth?: Object;
+};
+export type SponsoredUserOperation = {
+    /**
+     * - The paymaster-populated user operation, ready to sign.
+     */
+    userOperation: UserOperationV8;
+    /**
+     * - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+     */
+    tokenQuote?: TokenQuote;
+};
 export type Evm7702GaslessWalletCommonConfig = {
     /**
      * - The url of the rpc provider, or an instance of a class that implements eip-1193.
