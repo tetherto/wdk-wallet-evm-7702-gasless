@@ -272,16 +272,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   async _sendUserOperation (txs, config) {
     const eip7702Auth = await this._getAuthorization(config)
 
-    let sponsoredOp
-    try {
-      const result = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
-      sponsoredOp = result.userOperation
-    } catch (err) {
-      if (err?.message?.includes('AA50') || err?.cause?.message?.includes('AA50')) {
-        throw new Error('Not enough funds on the account to repay the paymaster.')
-      }
-      throw err
-    }
+    const { userOperation: sponsoredOp } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
 
     const chainId = await this._getChainId()
     const typedData = buildUserOpV08TypedData(sponsoredOp, ENTRYPOINT_V8, chainId)

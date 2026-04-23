@@ -414,25 +414,32 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       maxPriorityFeePerGas
     }
 
-    const op = await smartAccount.createUserOperation(
-      calls,
-      typeof config.provider === 'string' ? config.provider : undefined,
-      config.bundlerUrl,
-      createOverrides
-    )
-
     const paymaster = await this._getPaymaster(config)
     const paymasterContext = this._buildPaymasterContext(config)
     const paymasterUrl = config.paymasterUrl || config.bundlerUrl
 
-    const { userOperation: sponsoredOp, tokenQuote } = await paymaster.createPaymasterUserOperation(
-      smartAccount,
-      op,
-      config.bundlerUrl,
-      paymasterContext
-    )
+    let sponsoredOp, tokenQuote
+    try {
+      const op = await smartAccount.createUserOperation(
+        calls,
+        typeof config.provider === 'string' ? config.provider : undefined,
+        config.bundlerUrl,
+        createOverrides
+      )
 
-    // Pin paymaster address for AA41 debugging when the user explicitly set one.
+      ;({ userOperation: sponsoredOp, tokenQuote } = await paymaster.createPaymasterUserOperation(
+        smartAccount,
+        op,
+        config.bundlerUrl,
+        paymasterContext
+      ))
+    } catch (error) {
+      if (error?.message?.includes('AA50') || error?.cause?.message?.includes('AA50')) {
+        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
+      }
+      throw error
+    }
+
     if (!config.isSponsored && config.paymasterAddress && sponsoredOp.paymaster &&
         sponsoredOp.paymaster.toLowerCase() !== config.paymasterAddress.toLowerCase()) {
       throw new ConfigurationError(
@@ -445,27 +452,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
   /** @private */
   async _getUserOperationGasCost (txs, config) {
-    let result
-    try {
-      result = await this._buildSponsoredUserOperation(txs, config)
-    } catch (error) {
-      if (error?.message?.includes('AA50') || error?.cause?.message?.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
-      }
-      throw error
-    }
+    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
 
-    const { userOperation: sponsoredOp, tokenQuote } = result
-
-    // Fast path: the paymaster already computed the token-denominated cost.
-    // Available on Candide/Pimlico token paymaster flows via AK 0.3.3.
     if (tokenQuote?.tokenCost != null) {
       return tokenQuote.tokenCost
     }
 
-    // Fallback for providers that don't surface tokenQuote (or unusual
-    // flows). Compute the cost from the paymasterized gas limits + our
-    // own exchange-rate fetch.
     const totalGas =
       sponsoredOp.callGasLimit +
       sponsoredOp.verificationGasLimit +
