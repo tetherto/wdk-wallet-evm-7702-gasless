@@ -97,6 +97,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     private _buildPaymasterAndData;
     /** @private */
     private _buildUserOpV08TypedData;
+    private _evm7702GaslessReadOnlyAccount;
 }
 export type IWalletAccount = import("@tetherto/wdk-wallet").IWalletAccount;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;

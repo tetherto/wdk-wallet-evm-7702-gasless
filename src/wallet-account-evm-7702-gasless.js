@@ -89,6 +89,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     /** @private */
     this._ownerAccount = ownerAccount
+
+    /** @private */
+    this._evm7702GaslessReadOnlyAccount = undefined
   }
 
   /**
@@ -217,7 +220,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<WalletAccountReadOnlyEvm7702Gasless>} The read-only account.
    */
   async toReadOnlyAccount () {
-    return new WalletAccountReadOnlyEvm7702Gasless(this._address, this._config)
+    if (!this._evm7702GaslessReadOnlyAccount) {
+      this._evm7702GaslessReadOnlyAccount = new WalletAccountReadOnlyEvm7702Gasless(this._address, this._config)
+    }
+    return this._evm7702GaslessReadOnlyAccount
   }
 
   /**
