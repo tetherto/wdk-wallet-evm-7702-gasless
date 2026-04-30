@@ -148,11 +148,37 @@ export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type UserOperationV8 = import("abstractionkit").UserOperationV8;
 export type UserOperationReceipt = import("abstractionkit").UserOperationReceiptResult;
 export type TokenQuote = import("abstractionkit").TokenQuote;
+export type Eip7702AuthorizationOverride = {
+    /**
+     * - The chain id the authorization was signed for.
+     */
+    chainId: bigint;
+    /**
+     * - The delegate contract address (the EOA's new code).
+     */
+    address: string;
+    /**
+     * - The EOA's transaction nonce at signing time.
+     */
+    nonce: bigint;
+    /**
+     * - The y-parity bit of the signature, encoded as `'0x0'` or `'0x1'`.
+     */
+    yParity: string;
+    /**
+     * - The r component of the ECDSA signature (32-byte hex).
+     */
+    r: string;
+    /**
+     * - The s component of the ECDSA signature (32-byte hex).
+     */
+    s: string;
+};
 export type BuildSponsoredUserOperationOverrides = {
     /**
      * - Pre-signed EIP-7702 authorization tuple to include in the user operation.
      */
-    eip7702Auth?: Object;
+    eip7702Auth?: Eip7702AuthorizationOverride;
 };
 export type SponsoredUserOperation = {
     /**

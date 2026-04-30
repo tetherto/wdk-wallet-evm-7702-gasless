@@ -44,8 +44,18 @@ import { ConfigurationError } from './errors.js'
 /** @typedef {import('abstractionkit').TokenQuote} TokenQuote */
 
 /**
+ * @typedef {Object} Eip7702AuthorizationOverride
+ * @property {bigint} chainId - The chain id the authorization was signed for.
+ * @property {string} address - The delegate contract address (the EOA's new code).
+ * @property {bigint} nonce - The EOA's transaction nonce at signing time.
+ * @property {string} yParity - The y-parity bit of the signature, encoded as `'0x0'` or `'0x1'`.
+ * @property {string} r - The r component of the ECDSA signature (32-byte hex).
+ * @property {string} s - The s component of the ECDSA signature (32-byte hex).
+ */
+
+/**
  * @typedef {Object} BuildSponsoredUserOperationOverrides
- * @property {Object} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+ * @property {Eip7702AuthorizationOverride} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
  */
 
 /**

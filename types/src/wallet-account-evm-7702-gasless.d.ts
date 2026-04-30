@@ -85,7 +85,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * Disposes the wallet account, erasing the private key from the memory.
      */
     dispose(): void;
-    /** @private */
+    /**
+     * @private
+     * @returns {Promise<Eip7702AuthorizationOverride | null>}
+     */
     private _getAuthorization;
     /** @private */
     private _sendUserOperation;
@@ -110,5 +113,6 @@ export type Evm7702GaslessWalletConfig = import("./wallet-account-read-only-evm-
 export type Evm7702GaslessPaymasterTokenConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
 export type TypedData = import("./wallet-account-read-only-evm-7702-gasless.js").TypedData;
+export type Eip7702AuthorizationOverride = import("./wallet-account-read-only-evm-7702-gasless.js").Eip7702AuthorizationOverride;
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js';
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm';
