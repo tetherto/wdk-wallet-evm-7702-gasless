@@ -386,7 +386,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     try {
       const op = await smartAccount.createUserOperation(
         calls,
-        typeof config.provider === 'string' ? config.provider : undefined,
+        WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider),
         config.bundlerUrl,
         createOverrides
       )
@@ -472,11 +472,12 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
     let maxFeePerGas, maxPriorityFeePerGas
 
-    if (typeof config.provider === 'string') {
+    const providerRpc = WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider)
+    if (providerRpc) {
       let methodUnsupported = false
       const [gasPrice, tip] = await Promise.all([
-        sendJsonRpcRequest(config.provider, 'eth_gasPrice', []),
-        sendJsonRpcRequest(config.provider, 'eth_maxPriorityFeePerGas', []).catch(error => {
+        sendJsonRpcRequest(providerRpc, 'eth_gasPrice', []),
+        sendJsonRpcRequest(providerRpc, 'eth_maxPriorityFeePerGas', []).catch(error => {
           if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
             methodUnsupported = true
             return '0x0'
@@ -525,6 +526,13 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       value: BigInt(t.value || 0).toString(),
       data: t.data || '0x'
     })))
+  }
+
+  /** @private */
+  static _resolveProviderRpc (provider) {
+    if (typeof provider === 'string') return provider
+    if (Array.isArray(provider)) return provider.find(p => typeof p === 'string')
+    return undefined
   }
 
   /** @private */
