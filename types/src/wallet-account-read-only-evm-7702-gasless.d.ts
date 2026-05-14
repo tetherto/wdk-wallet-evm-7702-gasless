@@ -119,6 +119,13 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
      */
     protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: BuildSponsoredUserOperationOverrides): Promise<SponsoredUserOperation>;
+    /**
+     * @protected
+     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+     * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation (and token quote when applicable), cacheable between quote and send.
+     */
+    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<UserOperationGasCost>;
     /** @private */
     private _getSmartAccount;
     /** @private */
@@ -132,18 +139,11 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /** @private */
     private _getTokenExchangeRate;
     /** @private */
-    private _getUserOperationGasCost;
-    /** @private */
-    private _consumeCachedQuote;
-    /** @private */
-    private static _getTxKey;
-    /** @private */
     private static _resolveProviderRpc;
     private _smartAccount;
     private _bundler;
     private _paymaster;
     private _evmReadOnlyAccount;
-    private _lastQuote;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;

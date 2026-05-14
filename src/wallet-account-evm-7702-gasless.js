@@ -32,15 +32,28 @@ import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-
 /** @typedef {import('@tetherto/wdk-wallet-evm').TransferResult} TransferResult */
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
+/** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
+/** @typedef {import('abstractionkit').TokenQuote} TokenQuote */
+
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessWalletConfig} Evm7702GaslessWalletConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessPaymasterTokenConfig} Evm7702GaslessPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessSponsorshipPolicyConfig} Evm7702GaslessSponsorshipPolicyConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').TypedData} TypedData */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Eip7702AuthorizationOverride} Eip7702AuthorizationOverride */
 
+/**
+ * @typedef {Object} TransactionQuote
+ * @property {bigint} fee - The estimated fee.
+ * @property {number} createdAt - Timestamp from Date.now() at cache insertion, used for TTL eviction.
+ * @property {UserOperationV8} sponsoredOp - The paymaster-populated user operation, reusable for sendTransaction.
+ * @property {TokenQuote} [tokenQuote] - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+ */
+
 const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
 const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
+
+const QUOTE_CACHE_TTL_MS = 2 * 60 * 1000
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -80,6 +93,17 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     /** @private */
     this._evm7702GaslessReadOnlyAccount = undefined
+
+    /**
+     * Cache of recently-quoted transactions keyed by their serialized tx (see _getTxKey).
+     * sendTransaction and transfer consume an entry to skip the gas-estimation +
+     * paymaster round-trip when the same tx was just quoted. Entries expire after
+     * QUOTE_CACHE_TTL_MS; expired entries are swept on insert.
+     *
+     * @private
+     * @type {Map<string, TransactionQuote>}
+     */
+    this._quoteCache = new Map()
   }
 
   /**
@@ -161,6 +185,43 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /**
+   * Quotes the costs of a send transaction operation. Caches the built user
+   * operation against the serialized transaction so that a subsequent
+   * sendTransaction call with the same tx can skip the gas-estimation +
+   * paymaster round-trip. Cache entries expire after 2 minutes.
+   *
+   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+   * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
+   */
+  async quoteSendTransaction (tx, config) {
+    const mergedConfig = { ...this._config, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    const { isSponsored } = mergedConfig
+
+    if (isSponsored) {
+      return { fee: 0n }
+    }
+
+    const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+    const fee = BigInt(result.fee)
+
+    this._sweepExpiredQuotes()
+    this._quoteCache.set(WalletAccountEvm7702Gasless._getTxKey(tx), {
+      fee,
+      createdAt: Date.now(),
+      sponsoredOp: result.sponsoredOp,
+      tokenQuote: result.tokenQuote
+    })
+
+    return { fee }
+  }
+
+  /**
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
@@ -170,9 +231,22 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   async sendTransaction (tx, config) {
     const mergedConfig = { ...this._config, ...config }
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
 
-    const cached = this._consumeCachedQuote(tx)
+    const { isSponsored } = mergedConfig
+
+    let cached = this._consumeCachedQuote(tx)
+    let fee = 0n
+
+    if (cached) {
+      fee = cached.fee
+    } else if (!isSponsored) {
+      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+      fee = BigInt(result.fee)
+      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    }
 
     const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
 
@@ -189,17 +263,28 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   async transfer (options, config) {
     const mergedConfig = { ...this._config, ...config }
 
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
     const { isSponsored, transferMaxFee } = mergedConfig
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    let cached = this._consumeCachedQuote(tx)
+    let fee = 0n
+
+    if (cached) {
+      fee = cached.fee
+    } else if (!isSponsored) {
+      const result = await this._getUserOperationGasCost([tx], mergedConfig)
+      fee = BigInt(result.fee)
+      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    }
 
     if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
-
-    const cached = this._consumeCachedQuote(tx)
 
     const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
 
@@ -222,6 +307,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Disposes the wallet account, erasing the private key from the memory.
    */
   dispose () {
+    this._quoteCache.clear()
     this._ownerAccount.dispose()
   }
 
@@ -274,5 +360,35 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     })
 
     return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+  }
+
+  /** @private */
+  _consumeCachedQuote (tx) {
+    const key = WalletAccountEvm7702Gasless._getTxKey(tx)
+    const quote = this._quoteCache.get(key)
+    if (!quote) return null
+    this._quoteCache.delete(key)
+    if (Date.now() - quote.createdAt > QUOTE_CACHE_TTL_MS) return null
+    return quote
+  }
+
+  /** @private */
+  _sweepExpiredQuotes () {
+    const now = Date.now()
+    for (const [key, quote] of this._quoteCache) {
+      if (now - quote.createdAt > QUOTE_CACHE_TTL_MS) {
+        this._quoteCache.delete(key)
+      }
+    }
+  }
+
+  /** @private */
+  static _getTxKey (tx) {
+    const txs = Array.isArray(tx) ? tx : [tx]
+    return JSON.stringify(txs.map(t => ({
+      to: (t.to ?? '').toLowerCase(),
+      value: BigInt(t.value || 0).toString(),
+      data: t.data || '0x'
+    })))
   }
 }
