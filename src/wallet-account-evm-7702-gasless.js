@@ -174,7 +174,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const cached = this._consumeCachedQuote(tx)
 
-    const hash = await this._sendUserOperation([tx].flat(), mergedConfig, cached)
+    const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
 
     return { hash, fee }
   }
@@ -201,7 +201,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const cached = this._consumeCachedQuote(tx)
 
-    const hash = await this._sendUserOperation([tx], mergedConfig, cached)
+    const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
 
     return { hash, fee }
   }
@@ -252,7 +252,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _sendUserOperation (txs, config, cached) {
+  async _sendUserOperation (txs, { config, cached }) {
     const eip7702Auth = await this._getAuthorization(config)
 
     let sponsoredOp
