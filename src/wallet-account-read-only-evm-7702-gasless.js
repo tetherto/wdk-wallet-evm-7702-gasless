@@ -19,6 +19,7 @@ import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
 import {
+  AbstractionKitError,
   Bundler,
   ENTRYPOINT_V8,
   Erc7677Paymaster,
@@ -398,7 +399,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
         paymasterContext
       ))
     } catch (error) {
-      if (error?.message?.includes('AA50') || error?.cause?.message?.includes('AA50')) {
+      if (error instanceof AbstractionKitError &&
+          (error.message.includes('AA50') || error.cause?.message?.includes('AA50'))) {
         throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
       }
       throw error
