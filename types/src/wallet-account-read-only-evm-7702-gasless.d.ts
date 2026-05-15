@@ -14,13 +14,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      */
     protected _config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">;
     /**
-     * Cached viem clients.
-     *
-     * @protected
-     * @type {ViemClients | undefined}
-     */
-    protected _viemClients: ViemClients | undefined;
-    /**
      * The chain id.
      *
      * @protected
@@ -38,6 +31,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Returns the account's balance for the paymaster token provided in the wallet account configuration.
      *
      * @returns {Promise<bigint>} The paymaster token balance (in base unit).
+     * @throws {ConfigurationError} If no paymaster token is configured (sponsored mode).
      */
     getPaymasterTokenBalance(): Promise<bigint>;
     /**
@@ -90,19 +84,11 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Validates the configuration to ensure all required fields are present.
      *
      * @protected
-     * @param {Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>} config - The configuration to validate.
+     * @param {Partial<Evm7702GaslessWalletConfig>} config - The configuration to validate.
      * @throws {ConfigurationError} If the configuration is invalid or has missing required fields.
      * @returns {void}
      */
-    protected _validateConfig(config: Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>): void;
-    /**
-     * Returns cached viem clients (publicClient + bundlerClient).
-     *
-     * @protected
-     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object. Defaults to this._config if not provided.
-     * @returns {Promise<ViemClients>} The cached viem clients.
-     */
-    protected _getViemClients(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<ViemClients>;
+    protected _validateConfig(config: Partial<Evm7702GaslessWalletConfig>): void;
     /**
      * Returns the chain id.
      *
@@ -110,28 +96,61 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Promise<bigint>} The chain id.
      */
     protected _getChainId(): Promise<bigint>;
+    /**
+     * Returns a cached abstractionkit Bundler client.
+     *
+     * @protected
+     * @returns {Bundler} The cached bundler client, lazily created on first use.
+     */
+    protected _getBundler(): Bundler;
+    /**
+     * Builds a paymaster-sponsored user operation for quoting or sending.
+     * Does NOT sign. The caller adds the signature (and, for writes, the
+     * pre-signed EIP-7702 authorization in `overrides.eip7702Auth`).
+     *
+     * Keeps AK's gas estimation enabled on `createUserOperation` so that the
+     * +55000 verificationGasLimit padding AK applies to its estimate is
+     * preserved. The paymaster pipeline re-estimates with its own fields,
+     * so this is an extra bundler round-trip we pay for correctness.
+     *
+     * @protected
+     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration (base config merged with any per-call overrides).
+     * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (currently only the pre-signed 7702 authorization).
+     * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
+     */
+    protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: BuildSponsoredUserOperationOverrides): Promise<SponsoredUserOperation>;
+    /**
+     * Builds the user operation and returns the gas cost in the paymaster
+     * token's base units. Reached only on the token-paymaster path —
+     * sponsored flows short-circuit to a zero fee in `quoteSendTransaction`
+     * before calling this method.
+     *
+     * @protected
+     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+     * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
+     * @throws {Error} If the paymaster simulation reports AA50 (account does not hold enough of the paymaster token to cover the gas cost).
+     */
+    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<UserOperationGasCost>;
     /** @private */
-    private _buildPaymasterContext;
+    private _getSmartAccount;
     /** @private */
-    private _getPaymasterApprovalCalls;
-    /** @private */
-    private _getSmartAccountClientCacheKey;
-    /** @private */
-    private _getSmartAccountClient;
+    private _getPaymaster;
     /** @private */
     private _getEvmReadOnlyAccount;
     /** @private */
-    private _getUserOperationGasCost;
-    /** @private */
-    private _estimatePimlicoFeesPerGas;
+    private _buildPaymasterContext;
     /** @private */
     private _estimateFeesPerGas;
     /** @private */
     private _getTokenExchangeRate;
     /** @private */
-    private _getPimlicoTokenExchangeRate;
-    /** @private */
-    private _getCandideTokenExchangeRate;
+    private static _resolveProviderRpc;
+    private _smartAccount;
+    private _bundler;
+    private _paymaster;
+    private _evmReadOnlyAccount;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
@@ -140,22 +159,64 @@ export type EvmTransferOptions = import("@tetherto/wdk-wallet-evm").EvmTransferO
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type EvmTransactionReceipt = import("@tetherto/wdk-wallet-evm").EvmTransactionReceipt;
 export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
-export type PublicClient = import("viem").PublicClient;
-export type Chain = import("viem").Chain;
-export type BundlerClient = import("viem/account-abstraction").BundlerClient;
-export type ViemClients = {
+export type UserOperationV8 = import("abstractionkit").UserOperationV8;
+export type UserOperationReceipt = import("abstractionkit").UserOperationReceiptResult;
+export type TokenQuote = import("abstractionkit").TokenQuote;
+export type Eip7702AuthorizationOverride = {
     /**
-     * - The viem public client.
+     * - The chain id the authorization was signed for.
      */
-    publicClient: PublicClient;
+    chainId: bigint;
     /**
-     * - The viem bundler client.
+     * - The delegate contract address (the EOA's new code).
      */
-    bundlerClient: BundlerClient;
+    address: string;
     /**
-     * - The viem chain definition.
+     * - The EOA's transaction nonce at signing time.
      */
-    chain: Chain;
+    nonce: bigint;
+    /**
+     * - The y-parity bit of the signature, encoded as `'0x0'` or `'0x1'`.
+     */
+    yParity: string;
+    /**
+     * - The r component of the ECDSA signature (32-byte hex).
+     */
+    r: string;
+    /**
+     * - The s component of the ECDSA signature (32-byte hex).
+     */
+    s: string;
+};
+export type BuildSponsoredUserOperationOverrides = {
+    /**
+     * - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+     */
+    eip7702Auth?: Eip7702AuthorizationOverride;
+};
+export type SponsoredUserOperation = {
+    /**
+     * - The paymaster-populated user operation, ready to sign.
+     */
+    userOperation: UserOperationV8;
+    /**
+     * - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+     */
+    tokenQuote?: TokenQuote;
+};
+export type UserOperationGasCost = {
+    /**
+     * - The estimated fee with no tolerance buffer applied. For sponsored flows it's in wei; for token-paymaster flows it's in the paymaster token's base units.
+     */
+    fee: bigint;
+    /**
+     * - The paymaster-populated user operation built during the quote, reusable for sendTransaction.
+     */
+    sponsoredOp: UserOperationV8;
+    /**
+     * - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+     */
+    tokenQuote?: TokenQuote;
 };
 export type Evm7702GaslessWalletCommonConfig = {
     /**
@@ -191,9 +252,9 @@ export type Evm7702GaslessPaymasterTokenConfig = {
      */
     isSponsored?: false;
     /**
-     * - The address of the paymaster smart contract.
+     * - Optional pin on the paymaster smart contract address. When omitted, it's derived from the paymaster RPC (pm_supportedERC20Tokens for Candide, pimlico_getTokenQuotes for Pimlico).
      */
-    paymasterAddress: string;
+    paymasterAddress?: string;
     /**
      * - The paymaster token configuration.
      */
@@ -206,5 +267,7 @@ export type Evm7702GaslessPaymasterTokenConfig = {
     transferMaxFee?: number | bigint;
 };
 export type Evm7702GaslessWalletConfig = Evm7702GaslessWalletCommonConfig & (Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig);
-export type UserOperationReceipt = import("viem/account-abstraction").GetUserOperationReceiptReturnType;
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
+import { Simple7702Account } from 'abstractionkit';
+import { Bundler } from 'abstractionkit';
+import { Erc7677Paymaster } from 'abstractionkit';

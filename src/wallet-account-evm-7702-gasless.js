@@ -18,11 +18,7 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { http } from 'viem'
-import { createPaymasterClient, formatUserOperationRequest } from 'viem/account-abstraction'
-import { toAccount } from 'viem/accounts'
-import { to7702SimpleSmartAccount } from 'permissionless/accounts'
-import { createSmartAccountClient } from 'permissionless'
+import { ENTRYPOINT_V8 } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
@@ -36,20 +32,27 @@ import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-
 /** @typedef {import('@tetherto/wdk-wallet-evm').TransferResult} TransferResult */
 /** @typedef {import('@tetherto/wdk-wallet-evm').ApproveOptions} ApproveOptions */
 
+/** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
+/** @typedef {import('abstractionkit').TokenQuote} TokenQuote */
+
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessWalletConfig} Evm7702GaslessWalletConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessPaymasterTokenConfig} Evm7702GaslessPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessSponsorshipPolicyConfig} Evm7702GaslessSponsorshipPolicyConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').TypedData} TypedData */
 
-/** @typedef {import('permissionless').SmartAccountClient} SmartAccountClient */
+/**
+ * @typedef {Object} TransactionQuote
+ * @property {bigint} fee - The estimated fee.
+ * @property {number} createdAt - Timestamp from Date.now() at cache insertion, used for TTL eviction.
+ * @property {UserOperationV8} sponsoredOp - The paymaster-populated user operation, reusable for sendTransaction.
+ * @property {TokenQuote} [tokenQuote] - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+ */
 
 const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 
 const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
 
-const GAS_LIMIT_BUFFER = 150n
-const GAS_LIMIT_DIVISOR = 100n
-const EXCHANGE_RATE_PRECISION = 10n ** 18n
+const QUOTE_CACHE_TTL_MS = 2 * 60 * 1000
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -87,6 +90,19 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     /** @private */
     this._ownerAccount = ownerAccount
 
+    /** @private */
+    this._evm7702GaslessReadOnlyAccount = undefined
+
+    /**
+     * Cache of recently-quoted transactions keyed by their serialized tx (see _getTxKey).
+     * sendTransaction and transfer consume an entry to skip the gas-estimation +
+     * paymaster round-trip when the same tx was just quoted. Entries expire after
+     * QUOTE_CACHE_TTL_MS; expired entries are swept on insert.
+     *
+     * @private
+     * @type {Map<string, TransactionQuote>}
+     */
+    this._quoteCache = new Map()
   }
 
   /**
@@ -168,6 +184,43 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /**
+   * Quotes the costs of a send transaction operation. Caches the built user
+   * operation against the serialized transaction so that a subsequent
+   * sendTransaction call with the same tx can skip the gas-estimation +
+   * paymaster round-trip. Cache entries expire after 2 minutes.
+   *
+   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+   * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
+   */
+  async quoteSendTransaction (tx, config) {
+    const mergedConfig = { ...this._config, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    const { isSponsored } = mergedConfig
+
+    if (isSponsored) {
+      return { fee: 0n }
+    }
+
+    const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+    const fee = BigInt(result.fee)
+
+    this._sweepExpiredQuotes()
+    this._quoteCache.set(WalletAccountEvm7702Gasless._getTxKey(tx), {
+      fee,
+      createdAt: Date.now(),
+      sponsoredOp: result.sponsoredOp,
+      tokenQuote: result.tokenQuote
+    })
+
+    return { fee }
+  }
+
+  /**
    * Sends a transaction.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
@@ -181,9 +234,20 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       this._validateConfig(mergedConfig)
     }
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    const { isSponsored } = mergedConfig
 
-    const hash = await this._sendUserOperation([tx].flat(), mergedConfig)
+    let cached = this._consumeCachedQuote(tx)
+    let fee = 0n
+
+    if (cached) {
+      fee = cached.fee
+    } else if (!isSponsored) {
+      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+      fee = BigInt(result.fee)
+      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    }
+
+    const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
 
     return { hash, fee }
   }
@@ -206,13 +270,22 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    const { fee } = await this.quoteSendTransaction(tx, config)
+    let cached = this._consumeCachedQuote(tx)
+    let fee = 0n
+
+    if (cached) {
+      fee = cached.fee
+    } else if (!isSponsored) {
+      const result = await this._getUserOperationGasCost([tx], mergedConfig)
+      fee = BigInt(result.fee)
+      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    }
 
     if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const hash = await this._sendUserOperation([tx], mergedConfig)
+    const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
 
     return { hash, fee }
   }
@@ -224,10 +297,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    */
   async toReadOnlyAccount () {
     if (!this._evm7702GaslessReadOnlyAccount) {
-      const address = await this._ownerAccount.getAddress()
-      this._evm7702GaslessReadOnlyAccount = new WalletAccountReadOnlyEvm7702Gasless(address, this._config)
+      this._evm7702GaslessReadOnlyAccount = new WalletAccountReadOnlyEvm7702Gasless(this._address, this._config)
     }
-
     return this._evm7702GaslessReadOnlyAccount
   }
 
@@ -235,126 +306,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Disposes the wallet account, erasing the private key from the memory.
    */
   dispose () {
+    this._quoteCache.clear()
     this._ownerAccount.dispose()
-  }
-
-  /**
-   * Estimates the gas cost of a user operation using the smart account client.
-   *
-   * @protected
-   * @param {EvmTransaction[]} txs - The transactions.
-   * @param {Evm7702GaslessWalletConfig} config - The configuration.
-   * @returns {Promise<bigint>} The estimated gas cost.
-   */
-  async _getUserOperationGasCost (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-    const authorization = await this._getAuthorization(config)
-
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    const { isSponsored } = config
-
-    if (!isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
-    }
-
-    const prepareParams = { calls }
-
-    if (authorization) {
-      prepareParams.authorization = authorization
-    }
-
-    try {
-      const prepared = await smartAccountClient.prepareUserOperation(prepareParams)
-
-      const {
-        callGasLimit,
-        verificationGasLimit,
-        preVerificationGas,
-        paymasterVerificationGasLimit,
-        paymasterPostOpGasLimit,
-        maxFeePerGas
-      } = prepared
-
-      const totalGas = callGasLimit +
-        verificationGasLimit +
-        preVerificationGas +
-        (paymasterVerificationGasLimit || 0n) +
-        (paymasterPostOpGasLimit || 0n)
-
-      const gasCostInWei = totalGas * maxFeePerGas
-
-      const exchangeRate = await this._getTokenExchangeRate(config.paymasterToken.address, config)
-
-      return (gasCostInWei * exchangeRate + (EXCHANGE_RATE_PRECISION - 1n)) / EXCHANGE_RATE_PRECISION
-    } catch (error) {
-      if (error.message.includes('AA50')) {
-        throw new Error('Simulation failed: not enough funds in the account to repay the paymaster.')
-      }
-
-      throw error
-    }
-  }
-
-  /** @private */
-  _getViemOwner () {
-    const ownerAccount = this._ownerAccount
-
-    return toAccount({
-      address: ownerAccount.address,
-      async signMessage ({ message }) {
-        const msg = typeof message === 'string' ? message : message.raw
-        return await ownerAccount.sign(msg)
-      },
-      async signTypedData (typedData) {
-        return await ownerAccount.signTypedData(typedData)
-      }
-    })
-  }
-
-  /** @private */
-  async _getSmartAccountClient (config = this._config) {
-    const cacheKey = this._getSmartAccountClientCacheKey(config)
-
-    if (!this._smartAccountClients.has(cacheKey)) {
-      const { publicClient, chain } = await this._getViemClients(config)
-      const viemOwner = this._getViemOwner()
-
-      const smartAccount = await to7702SimpleSmartAccount({
-        client: publicClient,
-        owner: viemOwner,
-        accountLogicAddress: config.delegationAddress
-      })
-
-      const bundlerUrl = config.bundlerUrl
-      const paymasterUrl = config.paymasterUrl
-
-      const paymasterOption = paymasterUrl
-        ? createPaymasterClient({ transport: http(paymasterUrl) })
-        : true
-
-      const isPimlico = bundlerUrl.includes('pimlico')
-
-      this._smartAccountClients.set(cacheKey, createSmartAccountClient({
-        account: smartAccount,
-        chain,
-        bundlerTransport: http(bundlerUrl),
-        paymaster: paymasterOption,
-        paymasterContext: this._buildPaymasterContext(config),
-        userOperation: {
-          estimateFeesPerGas: isPimlico
-            ? () => this._estimatePimlicoFeesPerGas()
-            : () => this._estimateFeesPerGas()
-        }
-      }))
-    }
-
-    return this._smartAccountClients.get(cacheKey)
   }
 
   /** @private */
@@ -371,62 +324,67 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     })
 
     return {
+      chainId: BigInt(wdkAuth.chainId),
       address: wdkAuth.address,
-      chainId: Number(wdkAuth.chainId),
-      nonce: Number(wdkAuth.nonce),
+      nonce: BigInt(wdkAuth.nonce),
+      yParity: Number(wdkAuth.signature.yParity) === 0 ? '0x0' : '0x1',
       r: wdkAuth.signature.r,
-      s: wdkAuth.signature.s,
-      yParity: Number(wdkAuth.signature.yParity)
+      s: wdkAuth.signature.s
     }
   }
 
   /** @private */
-  async _sendUserOperation (txs, config) {
-    const smartAccountClient = await this._getSmartAccountClient(config)
-    const authorization = await this._getAuthorization(config)
+  async _sendUserOperation (txs, { config, cached }) {
+    const eip7702Auth = await this._getAuthorization(config)
 
-    const calls = txs.map(tx => ({
-      to: tx.to,
-      data: tx.data || '0x',
-      value: BigInt(tx.value || 0)
-    }))
-
-    const { isSponsored, paymasterToken } = config
-
-    if (!isSponsored) {
-      const approvalCalls = await this._getPaymasterApprovalCalls(config)
-      calls.unshift(...approvalCalls)
+    let sponsoredOp
+    if (cached?.sponsoredOp && eip7702Auth === null) {
+      sponsoredOp = cached.sponsoredOp
+    } else {
+      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
+      sponsoredOp = userOperation
     }
 
-    const userOpParams = { calls }
+    const smartAccount = this._getSmartAccount()
+    const chainId = await this._getChainId()
+    const typedData = smartAccount.getUserOperationEip712TypedData(sponsoredOp, chainId)
 
-    if (authorization) {
-      userOpParams.authorization = authorization
-    }
+    sponsoredOp.signature = await this._ownerAccount.signTypedData({
+      domain: typedData.domain,
+      types: typedData.types,
+      message: typedData.message
+    })
 
-    try {
-      const estimated = await smartAccountClient.prepareUserOperation(userOpParams)
+    return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+  }
 
-      const prepared = await smartAccountClient.prepareUserOperation({
-        ...userOpParams,
-        callGasLimit: estimated.callGasLimit * GAS_LIMIT_BUFFER / GAS_LIMIT_DIVISOR,
-        verificationGasLimit: estimated.verificationGasLimit * GAS_LIMIT_BUFFER / GAS_LIMIT_DIVISOR
-      })
+  /** @private */
+  _consumeCachedQuote (tx) {
+    const key = WalletAccountEvm7702Gasless._getTxKey(tx)
+    const quote = this._quoteCache.get(key)
+    if (!quote) return null
+    this._quoteCache.delete(key)
+    if (Date.now() - quote.createdAt > QUOTE_CACHE_TTL_MS) return null
+    return quote
+  }
 
-      const signature = await smartAccountClient.account.signUserOperation(prepared)
-      const rpcParams = formatUserOperationRequest({ ...prepared, signature })
-
-      return await smartAccountClient.request({
-        method: 'eth_sendUserOperation',
-        params: [rpcParams, smartAccountClient.account.entryPoint.address]
-      })
-    } catch (err) {
-      if (err.message.includes('AA50')) {
-        throw new Error('Not enough funds on the account to repay the paymaster.')
+  /** @private */
+  _sweepExpiredQuotes () {
+    const now = Date.now()
+    for (const [key, quote] of this._quoteCache) {
+      if (now - quote.createdAt > QUOTE_CACHE_TTL_MS) {
+        this._quoteCache.delete(key)
       }
-
-      throw err
     }
   }
 
+  /** @private */
+  static _getTxKey (tx) {
+    const txs = Array.isArray(tx) ? tx : [tx]
+    return JSON.stringify(txs.map(t => ({
+      to: (t.to ?? '').toLowerCase(),
+      value: BigInt(t.value || 0).toString(),
+      data: t.data || '0x'
+    })))
+  }
 }

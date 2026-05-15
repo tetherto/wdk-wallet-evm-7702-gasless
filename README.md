@@ -238,7 +238,7 @@ wallet.dispose()  // Dispose all accounts
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `paymasterAddress` | `string` | Address of the paymaster smart contract |
+| `paymasterAddress` | `string` (optional) | Pin on the paymaster smart contract address. When omitted, it is derived from the paymaster RPC (`pm_supportedERC20Tokens` for Candide, `pimlico_getTokenQuotes` for Pimlico) |
 | `paymasterToken` | `{ address: string }` | ERC-20 token used for gas payment |
 | `transferMaxFee` | `number \| bigint` (optional) | Maximum fee for transfer operations |
 
@@ -315,7 +315,7 @@ Read-only EIP-7702 gasless wallet account. Can query balances and estimate fees 
 |--------|---------------------------------------|-------------------------------|
 | Smart Account | Safe contract (predicted address) | EOA delegated via EIP-7702 |
 | `getAddress()` | Returns Safe contract address | Returns EOA address directly |
-| Underlying Library | `@tetherto/wdk-safe-relay-kit` | `permissionless` + `viem` |
+| Underlying Library | `@tetherto/wdk-safe-relay-kit` | `abstractionkit` |
 | Address Prediction | `predictSafeAddress()` required | No prediction needed |
 | Gas Payment | Native coins, paymaster token, sponsored | Sponsored or paymaster token |
 | Token Approval | Manual `amountToApprove` | Automatic (including USDT reset) |
