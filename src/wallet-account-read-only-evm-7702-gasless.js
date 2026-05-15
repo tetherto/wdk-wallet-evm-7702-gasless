@@ -554,10 +554,16 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /**
+   * Builds the user operation and returns the gas cost in the paymaster
+   * token's base units. Reached only on the token-paymaster path —
+   * sponsored flows short-circuit to a zero fee in `quoteSendTransaction`
+   * before calling this method.
+   *
    * @protected
    * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
-   * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation (and token quote when applicable), cacheable between quote and send.
+   * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
+   * @throws {Error} If the paymaster simulation reports AA50 (account does not hold enough of the paymaster token to cover the gas cost).
    */
   async _getUserOperationGasCost (txs, config) {
     const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
