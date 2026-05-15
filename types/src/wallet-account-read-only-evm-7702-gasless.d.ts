@@ -31,6 +31,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * Returns the account's balance for the paymaster token provided in the wallet account configuration.
      *
      * @returns {Promise<bigint>} The paymaster token balance (in base unit).
+     * @throws {ConfigurationError} If no paymaster token is configured (sponsored mode).
      */
     getPaymasterTokenBalance(): Promise<bigint>;
     /**
