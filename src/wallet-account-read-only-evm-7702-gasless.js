@@ -519,7 +519,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   static _resolveProviderRpc (provider) {
     if (typeof provider === 'string') return provider
     if (Array.isArray(provider)) return provider.find(p => typeof p === 'string')
-    return undefined
+    return provider
   }
 
   /** @private */
