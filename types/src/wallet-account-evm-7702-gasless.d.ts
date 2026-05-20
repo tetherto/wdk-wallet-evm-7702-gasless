@@ -60,6 +60,17 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      */
     approve(options: ApproveOptions): Promise<TransactionResult>;
     /**
+     * Quotes the costs of a send transaction operation. Caches the built user
+     * operation against the serialized transaction so that a subsequent
+     * sendTransaction call with the same tx can skip the gas-estimation +
+     * paymaster round-trip. Cache entries expire after 2 minutes.
+     *
+     * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+     * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+     * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
+     */
+    quoteSendTransaction(tx: EvmTransaction | EvmTransaction[], config?: Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>): Promise<Omit<TransactionResult, "hash">>;
+    /**
      * Sends a transaction.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
@@ -86,22 +97,26 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      */
     dispose(): void;
     /** @private */
-    private _getViemOwner;
-    /** @private */
-    private _getSmartAccountClient;
-    /** @private */
     private _getAuthorization;
-    /**
-     * Estimates the gas cost of a user operation using the smart account client.
-     *
-     * @protected
-     * @param {EvmTransaction[]} txs - The transactions.
-     * @param {Evm7702GaslessWalletConfig} config - The configuration.
-     * @returns {Promise<bigint>} The estimated gas cost.
-     */
-    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Evm7702GaslessWalletConfig): Promise<bigint>;
     /** @private */
     private _sendUserOperation;
+    /** @private */
+    private _consumeCachedQuote;
+    /** @private */
+    private _sweepExpiredQuotes;
+    /** @private */
+    private static _getTxKey;
+    private _evm7702GaslessReadOnlyAccount;
+    /**
+     * Cache of recently-quoted transactions keyed by their serialized tx (see _getTxKey).
+     * sendTransaction and transfer consume an entry to skip the gas-estimation +
+     * paymaster round-trip when the same tx was just quoted. Entries expire after
+     * QUOTE_CACHE_TTL_MS; expired entries are swept on insert.
+     *
+     * @private
+     * @type {Map<string, TransactionQuote>}
+     */
+    private _quoteCache: Map<string, TransactionQuote>;
 }
 export type IWalletAccount = import("@tetherto/wdk-wallet").IWalletAccount;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
@@ -110,10 +125,29 @@ export type TransactionResult = import("@tetherto/wdk-wallet-evm").TransactionRe
 export type EvmTransferOptions = import("@tetherto/wdk-wallet-evm").EvmTransferOptions;
 export type TransferResult = import("@tetherto/wdk-wallet-evm").TransferResult;
 export type ApproveOptions = import("@tetherto/wdk-wallet-evm").ApproveOptions;
+export type UserOperationV8 = import("abstractionkit").UserOperationV8;
+export type TokenQuote = import("abstractionkit").TokenQuote;
+export type TransactionQuote = {
+    /**
+     * - The estimated fee.
+     */
+    fee: bigint;
+    /**
+     * - Timestamp from Date.now() at cache insertion, used for TTL eviction.
+     */
+    createdAt: number;
+    /**
+     * - The paymaster-populated user operation, reusable for sendTransaction.
+     */
+    sponsoredOp: UserOperationV8;
+    /**
+     * - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
+     */
+    tokenQuote?: TokenQuote;
+};
 export type Evm7702GaslessWalletConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessWalletConfig;
 export type Evm7702GaslessPaymasterTokenConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
 export type TypedData = import("./wallet-account-read-only-evm-7702-gasless.js").TypedData;
-export type SmartAccountClient = import("permissionless").SmartAccountClient;
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js';
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm';
