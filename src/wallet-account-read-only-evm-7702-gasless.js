@@ -578,21 +578,22 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
   /** @private */
   async _getTokenExchangeRate (tokenAddress, config) {
-    const isPimlico = config.bundlerUrl.includes('pimlico')
+    const paymasterUrl = config.paymasterUrl || config.bundlerUrl
+    const isPimlico = paymasterUrl.includes('pimlico')
 
     if (isPimlico) {
-      return await this._getPimlicoTokenExchangeRate(tokenAddress)
+      return await this._getPimlicoTokenExchangeRate(tokenAddress, paymasterUrl)
     }
 
-    return await this._getCandideTokenExchangeRate(tokenAddress, config.paymasterUrl || config.bundlerUrl)
+    return await this._getCandideTokenExchangeRate(tokenAddress, paymasterUrl)
   }
 
   /** @private */
-  async _getPimlicoTokenExchangeRate (tokenAddress) {
-    const { bundlerClient } = await this._getViemClients()
+  async _getPimlicoTokenExchangeRate (tokenAddress, paymasterUrl) {
+    const client = createPublicClient({ transport: http(paymasterUrl) })
     const chainId = await this._getChainId()
 
-    const res = await bundlerClient.request({
+    const res = await client.request({
       method: 'pimlico_getTokenQuotes',
       params: [
         { tokens: [tokenAddress] },
