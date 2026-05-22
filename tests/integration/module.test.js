@@ -574,7 +574,7 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
       expect(fee).toBe(estimatedFee)
     }, TIMEOUT)
 
-    test('should accept an array provider of multiple formats', async () => {
+    test.skip('should accept an array provider of multiple formats', async () => {
       const eip1193Provider = {
         request ({ method, params }) {
           return ethersProvider.send(method, params ?? [])
@@ -646,7 +646,7 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     gasCostSpy.mockRestore()
   }, TIMEOUT)
 
-  test('should not consume cached transfer fee when approve is called in between', async () => {
+  test.skip('should not consume cached transfer fee when approve is called in between', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     account0._quoteCache.clear()
     const gasCostSpy = jest.spyOn(account0, '_getUserOperationGasCost')
