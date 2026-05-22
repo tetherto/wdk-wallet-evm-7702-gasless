@@ -18,7 +18,7 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { ENTRYPOINT_V8, Simple7702Account } from 'abstractionkit'
+import { ENTRYPOINT_V8, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
@@ -249,6 +249,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
 
+    await this._bumpCachedNonces()
+
     return { hash, fee }
   }
 
@@ -287,6 +289,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
 
+    await this._bumpCachedNonces()
+
     return { hash, fee }
   }
 
@@ -308,6 +312,38 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   dispose () {
     this._quoteCache.clear()
     this._ownerAccount.dispose()
+  }
+
+  /** @private */
+  async _bumpCachedNonces () {
+    const entriesWithSponsoredOp = [...this._quoteCache.entries()]
+      .filter(([, { sponsoredOp }]) => sponsoredOp)
+
+    if (entriesWithSponsoredOp.length === 0) return
+
+    const providerRpc = WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(this._config.provider)
+    const onChainNonce = await fetchAccountNonce(providerRpc, ENTRYPOINT_V8, this._address)
+
+    const smartAccount = this._getSmartAccount()
+    const paymaster = await this._getPaymaster()
+    const paymasterContext = this._buildPaymasterContext(this._config)
+
+    await Promise.all(entriesWithSponsoredOp.map(async ([txKey, quote]) => {
+      quote.sponsoredOp.nonce = onChainNonce + 1n
+
+      try {
+        const { userOperation, tokenQuote } = await paymaster.createPaymasterUserOperation(
+          smartAccount,
+          quote.sponsoredOp,
+          this._config.bundlerUrl,
+          paymasterContext
+        )
+        quote.sponsoredOp = userOperation
+        quote.tokenQuote = tokenQuote
+      } catch {
+        this._quoteCache.delete(txKey)
+      }
+    }))
   }
 
   /** @private */
