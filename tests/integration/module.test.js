@@ -1,13 +1,22 @@
 import { describe, expect, test, beforeAll, beforeEach, afterAll, jest } from '@jest/globals'
-import WalletManagerEvm7702Gasless from '../../index.js'
+
+import path from 'path'
 import { ethers } from 'ethers'
 import { alto } from 'prool/instances'
 import { paymaster } from '@pimlico/mock-paymaster'
-import { ENTRYPOINT_V8, Simple7702Account } from 'abstractionkit'
+import { ENTRYPOINT_V8, Erc7677Paymaster, Simple7702Account } from 'abstractionkit'
+
+import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
+
 import { MOCK_PAYMASTER_TOKEN_ADDRESS, mintMockTokens } from '../helpers/mock-paymaster-token.js'
 import { discoverPaymasterAddress } from '../helpers/erc-7677-discovery.js'
 import { deploy, transfer, balanceOf } from '../helpers/test-token.js'
-import path from 'path'
+
+const detectProvider = Erc7677Paymaster.detectProvider
+jest.spyOn(Erc7677Paymaster, 'detectProvider').mockImplementation((url) => {
+  if (url?.includes('pimlico')) return 'pimlico'
+  return detectProvider(url)
+})
 
 const TIMEOUT = 60000 // 60 seconds
 
@@ -95,7 +104,7 @@ const setupServers = async () => {
 async function deployTestTokens () {
   const mockPaymasterToken = new ethers.Contract(
     MOCK_PAYMASTER_TOKEN_ADDRESS,
-    ['function approve(address spender, uint256 amount) returns (bool)', 'function balanceOf(address owner) view returns (uint256)', 'function sudoMint(address to, uint256 amount)', 'function transfer(address to, uint256 amount)'],
+    ['function balanceOf(address owner) view returns (uint256)', 'function sudoMint(address to, uint256 amount)', 'function transfer(address to, uint256 amount)'],
     ethersProvider
   )
 
@@ -112,15 +121,6 @@ async function fundAccountsWithTokens (testToken, accounts, nonce) {
     await transfer(testToken, account, 1000, fundedWallet, nonce++)
   }
   return nonce
-}
-
-async function approvePaymasterTokens (token, accounts, spender) {
-  for (const account of accounts) {
-    const signer = new ethers.Wallet(`0x${account.keyPair.privateKey}`, ethersProvider)
-    const tokenWithSigner = token.connect(signer)
-    const tx = await tokenWithSigner.approve(spender, ethers.MaxUint256)
-    await tx.wait()
-  }
 }
 
 async function delegateAccounts (accounts) {
@@ -164,7 +164,6 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     wallet = new WalletManagerEvm7702Gasless(SEED_PHRASE, config)
 
     const accounts = [ACCOUNT0.address, ACCOUNT1.address]
-    const accountFixtures = [ACCOUNT0, ACCOUNT1]
 
     await delegateAccounts(accounts)
 
@@ -176,7 +175,6 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     await ethersProvider.send('hardhat_setBalance', [ACCOUNT1.address, ethers.toQuantity(ethers.parseEther('10'))])
     await mintMockTokens(ACCOUNT0.address, ethers.parseEther('10000'), fundedWallet, nonce++)
     await mintMockTokens(ACCOUNT1.address, ethers.parseEther('10000'), fundedWallet, nonce++)
-    await approvePaymasterTokens(mockPaymasterToken, accountFixtures, paymasterAddress)
   }, TIMEOUT)
 
   afterAll(async () => {
