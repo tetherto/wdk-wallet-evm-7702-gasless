@@ -139,7 +139,7 @@ export type TransactionQuote = {
     /**
      * - The paymaster-populated user operation, reusable for sendTransaction.
      */
-    sponsoredOp: UserOperationV8;
+    sponsoredOp?: UserOperationV8;
     /**
      * - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
      */

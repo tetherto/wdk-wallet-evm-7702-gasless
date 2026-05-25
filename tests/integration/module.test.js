@@ -644,10 +644,10 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     gasCostSpy.mockRestore()
   }, TIMEOUT)
 
-  test.skip('should not consume cached transfer fee when approve is called in between', async () => {
+  test('should preserve and bump cached transfer quote when another tx is sent in between', async () => {
     const account0 = await wallet.getAccountByPath("0'/0/0")
     account0._quoteCache.clear()
-    const gasCostSpy = jest.spyOn(account0, '_getUserOperationGasCost')
+    const quoteSpy = jest.spyOn(account0, 'quoteSendTransaction')
 
     const TRANSFER = {
       token: testToken.target,
@@ -656,7 +656,7 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     }
 
     const { fee: quotedFee } = await account0.quoteTransfer(TRANSFER)
-    expect(gasCostSpy).toHaveBeenCalledTimes(1)
+    expect(quoteSpy).toHaveBeenCalledTimes(1)
 
     const APPROVE_TRANSACTION = {
       to: testToken.target,
@@ -666,14 +666,14 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
 
     const { hash: approveHash } = await account0.sendTransaction(APPROVE_TRANSACTION)
     await waitForTx(approveHash, account0)
-    expect(gasCostSpy).toHaveBeenCalledTimes(2)
+    expect(quoteSpy).toHaveBeenCalledTimes(2)
 
     const { hash, fee: transferFee } = await account0.transfer(TRANSFER)
     await waitForTx(hash, account0)
-    expect(gasCostSpy).toHaveBeenCalledTimes(2)
+    expect(quoteSpy).toHaveBeenCalledTimes(2)
 
     expect(transferFee).toBe(quotedFee)
 
-    gasCostSpy.mockRestore()
+    quoteSpy.mockRestore()
   }, TIMEOUT)
 })

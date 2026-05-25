@@ -44,7 +44,7 @@ import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-
  * @typedef {Object} TransactionQuote
  * @property {bigint} fee - The estimated fee.
  * @property {number} createdAt - Timestamp from Date.now() at cache insertion, used for TTL eviction.
- * @property {UserOperationV8} sponsoredOp - The paymaster-populated user operation, reusable for sendTransaction.
+ * @property {UserOperationV8} [sponsoredOp] - The paymaster-populated user operation, reusable for sendTransaction.
  * @property {TokenQuote} [tokenQuote] - Token-paymaster fee data. Populated on the token-payment flow; absent on sponsored flows.
  */
 
@@ -202,7 +202,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored } = mergedConfig
 
+    const txKey = WalletAccountEvm7702Gasless._getTxKey(tx)
+
     if (isSponsored) {
+      this._sweepExpiredQuotes()
+      this._quoteCache.set(txKey, { fee: 0n, createdAt: Date.now() })
       return { fee: 0n }
     }
 
@@ -210,7 +214,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const fee = BigInt(result.fee)
 
     this._sweepExpiredQuotes()
-    this._quoteCache.set(WalletAccountEvm7702Gasless._getTxKey(tx), {
+    this._quoteCache.set(txKey, {
       fee,
       createdAt: Date.now(),
       sponsoredOp: result.sponsoredOp,
@@ -234,18 +238,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       this._validateConfig(mergedConfig)
     }
 
-    const { isSponsored } = mergedConfig
-
     let cached = this._consumeCachedQuote(tx)
-    let fee = 0n
-
-    if (cached) {
-      fee = cached.fee
-    } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
-      fee = BigInt(result.fee)
-      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    if (!cached) {
+      await this.quoteSendTransaction(tx, config)
+      cached = this._consumeCachedQuote(tx)
     }
+
+    const fee = cached.fee
 
     const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
 
@@ -273,15 +272,12 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
     let cached = this._consumeCachedQuote(tx)
-    let fee = 0n
-
-    if (cached) {
-      fee = cached.fee
-    } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx], mergedConfig)
-      fee = BigInt(result.fee)
-      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    if (!cached) {
+      await this.quoteSendTransaction(tx, config)
+      cached = this._consumeCachedQuote(tx)
     }
+
+    const fee = cached.fee
 
     if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
       throw new Error('Exceeded maximum fee cost for transfer operation.')
