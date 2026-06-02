@@ -16,6 +16,7 @@ For detailed documentation about the complete WDK ecosystem, visit [docs.wallet.
 - **Gasless Transactions**: Full paymaster integration for sponsored or ERC-20 token gas payment
 - **Auto Approval**: Paymaster token allowance is managed automatically, including USDT mainnet reset handling
 - **Provider-Agnostic**: Works with any ERC-4337 bundler/paymaster (Pimlico, Candide, etc.)
+- **Failover Providers**: Pass an array of provider URLs or EIP-1193 instances to enable automatic round-robin failover
 - **Bare Runtime**: Supports both Node.js and [Bare](https://github.com/nicolo-ribaudo/bare) runtime
 - **EVM Derivation Paths**: Support for BIP-44 standard derivation paths for Ethereum (m/44'/60')
 - **Multi-Account Management**: Create and manage multiple wallets from a single seed phrase
@@ -217,7 +218,7 @@ wallet.dispose()  // Dispose all accounts
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `provider` | `string \| Eip1193Provider` | RPC endpoint URL or EIP-1193 provider instance |
+| `provider` | `string \| Eip1193Provider \| (string \| Eip1193Provider)[]` | RPC endpoint URL, EIP-1193 provider instance, or failover list mixing both formats |
 | `bundlerUrl` | `string` | URL of the ERC-4337 bundler service |
 | `delegationAddress` | `string` | Address of the smart account implementation to delegate to |
 
@@ -226,6 +227,7 @@ wallet.dispose()  // Dispose all accounts
 | Field | Type | Description |
 |-------|------|-------------|
 | `paymasterUrl` | `string` | URL of the paymaster service, if different from `bundlerUrl` (e.g. Candide) |
+| `retries` | `number` | Additional retry attempts for provider failover arrays. Total attempts are `1 + retries`. Defaults to `3` |
 
 ### Sponsored Mode
 

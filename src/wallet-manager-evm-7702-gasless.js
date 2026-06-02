@@ -24,6 +24,8 @@ import FailoverProvider from '@tetherto/wdk-failover-provider'
 
 import WalletAccountEvm7702Gasless from './wallet-account-evm-7702-gasless.js'
 
+import { ConfigurationError } from './errors.js'
+
 /** @typedef {import('ethers').Provider} Provider */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').FeeRates} FeeRates */
@@ -59,18 +61,20 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
     const { provider, retries = 3 } = config
 
     if (Array.isArray(provider)) {
-      if (provider.length > 0) {
-        const failoverProvider = new FailoverProvider({ retries })
-
-        for (const entry of provider) {
-          const option = typeof entry === 'string'
-            ? new JsonRpcProvider(entry)
-            : new BrowserProvider(entry)
-          failoverProvider.addProvider(option)
-        }
-
-        this._provider = failoverProvider.initialize()
+      if (!provider.length) {
+        throw new ConfigurationError("The 'provider' option cannot be set to an empty list.")
       }
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of provider) {
+        const option = typeof entry === 'string'
+          ? new JsonRpcProvider(entry)
+          : new BrowserProvider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      this._provider = failoverProvider.initialize()
     } else if (provider) {
       this._provider =
         typeof provider === 'string'
