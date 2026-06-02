@@ -20,6 +20,8 @@ import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
+import FailoverProvider from '@tetherto/wdk-failover-provider'
+
 import WalletAccountEvm7702Gasless from './wallet-account-evm-7702-gasless.js'
 
 /** @typedef {import('ethers').Provider} Provider */
@@ -46,18 +48,34 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
      */
     this._config = config
 
-    const { provider } = config
+    /**
+     * An ethers provider to interact with a node of the blockchain.
+     *
+     * @protected
+     * @type {Provider | undefined}
+     */
+    this._provider = undefined
 
-    if (provider) {
-      /**
-       * An ethers provider to interact with a node of the blockchain.
-       *
-       * @protected
-       * @type {Provider | undefined}
-       */
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      if (provider.length > 0) {
+        const failoverProvider = new FailoverProvider({ retries })
+
+        for (const entry of provider) {
+          const option = typeof entry === 'string'
+            ? new JsonRpcProvider(entry)
+            : new BrowserProvider(entry)
+          failoverProvider.addProvider(option)
+        }
+
+        this._provider = failoverProvider.initialize()
+      }
+    } else if (provider) {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
     }
   }
 

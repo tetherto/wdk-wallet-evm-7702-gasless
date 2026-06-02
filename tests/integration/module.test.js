@@ -572,7 +572,7 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
       expect(fee).toBe(estimatedFee)
     }, TIMEOUT)
 
-    test.skip('should accept an array provider of multiple formats', async () => {
+    test('should accept an array provider of multiple formats', async () => {
       const eip1193Provider = {
         request ({ method, params }) {
           return ethersProvider.send(method, params ?? [])
