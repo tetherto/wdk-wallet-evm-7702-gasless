@@ -25,8 +25,8 @@
     "build:types": "tsc",
     "lint": "standard",
     "lint:fix": "standard --fix",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --testPathIgnorePatterns=/tests/integration/",
+    "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage --testPathIgnorePatterns=/tests/integration/",
     "test:integration-wait": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --forceExit",
     "test:integration-wait:coverage": "wait-on http://localhost:8545 && cross-env NODE_OPTIONS=--experimental-vm-modules jest tests/integration --coverage --forceExit",
     "test:integration": "concurrently -k -s first -n \"NODE,TEST\" -c \"black,green\" --hide NODE \"npx hardhat node\" \"npm run test:integration-wait\"",
@@ -81,5 +81,8 @@
       "bare.js",
       "tests/**/*.js"
     ]
+  },
+  "jest": {
+    "collectCoverageFrom": ["src/**/*.js"]
   }
 }
