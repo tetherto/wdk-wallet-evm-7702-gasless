@@ -572,15 +572,13 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
       expect(fee).toBe(estimatedFee)
     }, TIMEOUT)
 
-    test('should accept an array provider of multiple formats', async () => {
-      const eip1193Provider = {
-        request ({ method, params }) {
-          return ethersProvider.send(method, params ?? [])
-        }
+    test('should fail over to the next provider when the first one in the array errors', async () => {
+      const failingProvider = {
+        request: jest.fn(() => Promise.reject(new Error('simulated RPC connection failure')))
       }
 
       const config = {
-        provider: [eip1193Provider, 'http://localhost:8545'],
+        provider: [failingProvider, 'http://localhost:8545'],
         bundlerUrl: 'http://localhost:4337',
         paymasterUrl: 'http://localhost:3000?pimlico',
         paymasterAddress,
@@ -595,6 +593,7 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
       const { hash } = await account0.sendTransaction(TX)
       const receipt = await waitForTx(hash, account0)
 
+      expect(failingProvider.request).toHaveBeenCalled()
       expect(receipt.status).toBe(1)
     }, TIMEOUT)
   })

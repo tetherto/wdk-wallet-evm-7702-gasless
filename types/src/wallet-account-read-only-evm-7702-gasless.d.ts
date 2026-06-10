@@ -175,7 +175,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /** @private */
     private _getTokenExchangeRate;
     /** @private */
-    private static _resolveProviderRpc;
     private _smartAccount;
     private _bundler;
     private _paymaster;

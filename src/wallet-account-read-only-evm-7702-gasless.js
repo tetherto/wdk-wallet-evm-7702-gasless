@@ -134,7 +134,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * An EIP-1193–compatible provider used to interact with the blockchain.
      *
      * Note: the provider type is restricted to EIP-1193 to ensure compatibility
-     * with Safe4337Pack and to enable the failover mechanism. While RPC URLs
+     * with `abstractionkit` and to enable the failover mechanism. While RPC URLs
      * can still be provided in the configuration, they are internally wrapped
      * into an EIP-1193 provider.
      *
@@ -459,7 +459,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     try {
       const op = await smartAccount.createUserOperation(
         calls,
-        WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider),
+        this._provider,
         config.bundlerUrl,
         createOverrides
       )
@@ -544,47 +544,25 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       }
     }
 
-    let maxFeePerGas, maxPriorityFeePerGas
+    let methodUnsupported = false
+    const [gasPrice, tip] = await Promise.all([
+      sendJsonRpcRequest(this._provider, 'eth_gasPrice', []),
+      sendJsonRpcRequest(this._provider, 'eth_maxPriorityFeePerGas', []).catch(error => {
+        if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
+          methodUnsupported = true
+          return '0x0'
+        }
+        throw error
+      })
+    ])
 
-    const providerRpc = WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider)
-    if (providerRpc) {
-      let methodUnsupported = false
-      const [gasPrice, tip] = await Promise.all([
-        sendJsonRpcRequest(providerRpc, 'eth_gasPrice', []),
-        sendJsonRpcRequest(providerRpc, 'eth_maxPriorityFeePerGas', []).catch(error => {
-          if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
-            methodUnsupported = true
-            return '0x0'
-          }
-          throw error
-        })
-      ])
-
-      maxFeePerGas = BigInt(gasPrice)
-      maxPriorityFeePerGas = methodUnsupported ? maxFeePerGas : BigInt(tip)
-    } else {
-      const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
-      const feeData = await evmReadOnlyAccount._provider.getFeeData()
-
-      if (feeData.maxFeePerGas == null || feeData.maxPriorityFeePerGas == null) {
-        throw new ConfigurationError('Provider did not return EIP-1559 fee data.')
-      }
-
-      maxFeePerGas = feeData.maxFeePerGas
-      maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
-    }
+    const maxFeePerGas = BigInt(gasPrice)
+    const maxPriorityFeePerGas = methodUnsupported ? maxFeePerGas : BigInt(tip)
 
     return {
       maxFeePerGas: maxFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR,
       maxPriorityFeePerGas: maxPriorityFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR
     }
-  }
-
-  /** @private */
-  static _resolveProviderRpc (provider) {
-    if (typeof provider === 'string') return provider
-    if (Array.isArray(provider)) return provider.find(p => typeof p === 'string')
-    return provider
   }
 
   /** @private */
