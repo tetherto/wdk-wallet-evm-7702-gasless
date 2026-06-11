@@ -111,7 +111,7 @@ const GAS_FEE_DIVISOR = 100n
 const EXCHANGE_RATE_PRECISION = 10n ** 18n
 
 /**
- * The ethers error [codes](https://docs.ethers.org/v6/api/utils/errors/) that denote a connectivity failure.
+ * The default network error and ethers error [codes](https://docs.ethers.org/v6/api/utils/errors/) that denote a connectivity failure.
  */
 const CONNECTIVITY_ERROR_CODES = new Set(['ECONNREFUSED', 'NETWORK_ERROR', 'SERVER_ERROR', 'TIMEOUT'])
 
