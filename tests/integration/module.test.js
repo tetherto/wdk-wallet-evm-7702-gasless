@@ -571,10 +571,38 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
       expect(receipt.status).toBe(1)
       expect(fee).toBe(estimatedFee)
     }, TIMEOUT)
+  })
 
+  describe('with failover provider', () => {
     test('should fail over to the next provider when the first one in the array errors', async () => {
       const failingProvider = {
         request: jest.fn(() => Promise.reject(Object.assign(new Error('simulated RPC connection failure'), { code: 'SERVER_ERROR' })))
+      }
+
+      const config = {
+        provider: [failingProvider, 'http://localhost:8545'],
+        bundlerUrl: 'http://localhost:4337',
+        paymasterUrl: 'http://localhost:3000?pimlico',
+        paymasterAddress,
+        delegationAddress: DELEGATION_ADDRESS,
+        paymasterToken: { address: MOCK_PAYMASTER_TOKEN_ADDRESS }
+      }
+
+      const arrayProviderWallet = new WalletManagerEvm7702Gasless(SEED_PHRASE, config)
+      const account0 = await arrayProviderWallet.getAccountByPath("0'/0/0")
+
+      const TX = { to: ACCOUNT1.address, value: 0 }
+      const { hash } = await account0.sendTransaction(TX)
+      const receipt = await waitForTx(hash, account0)
+
+      expect(failingProvider.request).toHaveBeenCalled()
+      expect(receipt.status).toBe(1)
+    }, TIMEOUT)
+
+    test('should fail over to the next provider when the first provider is unreachable (ECONNREFUSED)', async () => {
+      const unreachableRpc = new ethers.JsonRpcProvider('http://localhost:9999', ethers.Network.from(1), { staticNetwork: ethers.Network.from(1) })
+      const failingProvider = {
+        request: jest.fn(({ method, params }) => unreachableRpc.send(method, params ?? []))
       }
 
       const config = {

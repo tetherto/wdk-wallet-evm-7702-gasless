@@ -111,12 +111,9 @@ const GAS_FEE_DIVISOR = 100n
 const EXCHANGE_RATE_PRECISION = 10n ** 18n
 
 /**
- * The ethers error codes that denote a connectivity failure.
- *
- * @see https://docs.ethers.org/v6/api/utils/errors/
- * @type {Set<import('ethers').ErrorCode>}
+ * The ethers error [codes](https://docs.ethers.org/v6/api/utils/errors/) that denote a connectivity failure.
  */
-const CONNECTIVITY_ERROR_CODES = new Set(['NETWORK_ERROR', 'SERVER_ERROR', 'TIMEOUT'])
+const CONNECTIVITY_ERROR_CODES = new Set(['ECONNREFUSED', 'NETWORK_ERROR', 'SERVER_ERROR', 'TIMEOUT'])
 
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
   /**
