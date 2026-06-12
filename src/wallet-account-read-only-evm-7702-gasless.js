@@ -14,6 +14,8 @@
 
 'use strict'
 
+import { isError, JsonRpcProvider } from 'ethers'
+
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
@@ -26,6 +28,8 @@ import {
   Simple7702Account,
   sendJsonRpcRequest
 } from 'abstractionkit'
+
+import FailoverProvider from '@tetherto/wdk-failover-provider'
 
 import { ConfigurationError } from './errors.js'
 
@@ -74,7 +78,8 @@ import { ConfigurationError } from './errors.js'
 
 /**
  * @typedef {Object} Evm7702GaslessWalletCommonConfig
- * @property {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+ * @property {string | Eip1193Provider | (string | Eip1193Provider)[]} provider - The url of the rpc provider, or an instance of a class that implements eip-1193. It's also possible to provide an array of urls or EIP 1193 providers instead. In such case, connection errors will cause the wallet to automatically fallback on the next provider in the list.
+ * @property {number} [retries] - If set and if 'provider' is a list of urls or EIP 1193 providers, the number of additional retry attempts after the initial call fails. Total attempts = `1 + retries`. For example, `retries: 3` with 4 providers will try each provider once before throwing. If `retries` exceeds the number of providers, the failover will loop back and retry already-failed providers in round-robin order. Default: 3.
  * @property {string} bundlerUrl - The url of the bundler/paymaster service.
  * @property {string} [paymasterUrl] - The url of the paymaster service if different from bundlerUrl (e.g. for Candide which uses separate endpoints).
  * @property {string} delegationAddress - The address of the smart account implementation to delegate to (e.g. '0xe6Cae83BdE06E4c305530e199D7217f42808555B' for SimpleAccount).
@@ -105,6 +110,11 @@ const GAS_FEE_MULTIPLIER = 150n
 const GAS_FEE_DIVISOR = 100n
 const EXCHANGE_RATE_PRECISION = 10n ** 18n
 
+/**
+ * The default network error and ethers error [codes](https://docs.ethers.org/v6/api/utils/errors/) that denote a connectivity failure.
+ */
+const CONNECTIVITY_ERROR_CODES = new Set(['ECONNREFUSED', 'NETWORK_ERROR', 'SERVER_ERROR', 'TIMEOUT'])
+
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
   /**
    * Creates a new read-only evm 7702 gasless wallet account.
@@ -124,6 +134,19 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @type {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>}
      */
     this._config = config
+
+    /**
+     * An EIP-1193–compatible provider used to interact with the blockchain.
+     *
+     * Note: the provider type is restricted to EIP-1193 to ensure compatibility
+     * with `abstractionkit` and to enable the failover mechanism. While RPC URLs
+     * can still be provided in the configuration, they are internally wrapped
+     * into an EIP-1193 provider.
+     *
+     * @protected
+     * @type {Eip1193Provider}
+     */
+    this._provider = this._createFailoverProvider(this._config)
 
     /**
      * The chain id.
@@ -205,7 +228,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const mergedConfig = { ...this._config, ...config }
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -302,6 +325,56 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   }
 
   /**
+   * Wraps a string RPC URL or provider into an EIP-1193 compatible provider.
+   *
+   * @protected
+   * @param {string | Eip1193Provider} provider - The url of the rpc provider, or an instance of a class that implements eip-1193.
+   * @returns { Eip1193Provider } A wrapped Eip1193Provider instance.
+   */
+  _wrapEip1193Provider (provider) {
+    return typeof provider === 'string'
+      ? {
+          provider: new JsonRpcProvider(provider),
+          request ({ method, params }) {
+            return this.provider.send(method, params ?? [])
+          }
+        }
+      : provider
+  }
+
+  /**
+   * Creates a FailoverProvider from the configured providers. If only one provider is supplied, it is wrapped and returned.
+   *
+   * @protected
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} [config] - The configuration object.
+   * @returns {Eip1193Provider} A wrapped Eip1193Provider instance.
+   * @throws {ConfigurationError} If the `provider` option is set to an empty array.
+   */
+  _createFailoverProvider (config = this._config) {
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      if (!provider.length) {
+        throw new ConfigurationError("The 'provider' option cannot be set to an empty list.")
+      }
+
+      const failoverProvider = new FailoverProvider({
+        retries,
+        shouldRetryOn: (error) => [...CONNECTIVITY_ERROR_CODES].some((code) => isError(error, code))
+      })
+
+      for (const entry of provider) {
+        const option = this._wrapEip1193Provider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      return failoverProvider.initialize()
+    }
+
+    return this._wrapEip1193Provider(provider)
+  }
+
+  /**
    * Validates the configuration to ensure all required fields are present.
    *
    * @protected
@@ -368,6 +441,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration (base config merged with any per-call overrides).
    * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (currently only the pre-signed 7702 authorization).
    * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
+   * @throws {Error} If the token paymaster reports AA50 (account does not hold the paymaster token).
+   * @throws {ConfigurationError} If the configured `paymasterAddress` does not match the address returned by the paymaster RPC.
    */
   async _buildSponsoredUserOperation (txs, config, overrides = {}) {
     const smartAccount = this._getSmartAccount()
@@ -394,7 +469,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     try {
       const op = await smartAccount.createUserOperation(
         calls,
-        WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider),
+        this._provider,
         config.bundlerUrl,
         createOverrides
       )
@@ -479,47 +554,25 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       }
     }
 
-    let maxFeePerGas, maxPriorityFeePerGas
+    let methodUnsupported = false
+    const [gasPrice, tip] = await Promise.all([
+      sendJsonRpcRequest(this._provider, 'eth_gasPrice', []),
+      sendJsonRpcRequest(this._provider, 'eth_maxPriorityFeePerGas', []).catch(error => {
+        if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
+          methodUnsupported = true
+          return '0x0'
+        }
+        throw error
+      })
+    ])
 
-    const providerRpc = WalletAccountReadOnlyEvm7702Gasless._resolveProviderRpc(config.provider)
-    if (providerRpc) {
-      let methodUnsupported = false
-      const [gasPrice, tip] = await Promise.all([
-        sendJsonRpcRequest(providerRpc, 'eth_gasPrice', []),
-        sendJsonRpcRequest(providerRpc, 'eth_maxPriorityFeePerGas', []).catch(error => {
-          if (error?.cause?.code === -32601 || /method not found|not supported/i.test(error?.message ?? '')) {
-            methodUnsupported = true
-            return '0x0'
-          }
-          throw error
-        })
-      ])
-
-      maxFeePerGas = BigInt(gasPrice)
-      maxPriorityFeePerGas = methodUnsupported ? maxFeePerGas : BigInt(tip)
-    } else {
-      const evmReadOnlyAccount = await this._getEvmReadOnlyAccount()
-      const feeData = await evmReadOnlyAccount._provider.getFeeData()
-
-      if (feeData.maxFeePerGas == null || feeData.maxPriorityFeePerGas == null) {
-        throw new ConfigurationError('Provider did not return EIP-1559 fee data.')
-      }
-
-      maxFeePerGas = feeData.maxFeePerGas
-      maxPriorityFeePerGas = feeData.maxPriorityFeePerGas
-    }
+    const maxFeePerGas = BigInt(gasPrice)
+    const maxPriorityFeePerGas = methodUnsupported ? maxFeePerGas : BigInt(tip)
 
     return {
       maxFeePerGas: maxFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR,
       maxPriorityFeePerGas: maxPriorityFeePerGas * GAS_FEE_MULTIPLIER / GAS_FEE_DIVISOR
     }
-  }
-
-  /** @private */
-  static _resolveProviderRpc (provider) {
-    if (typeof provider === 'string') return provider
-    if (Array.isArray(provider)) return provider.find(p => typeof p === 'string')
-    return provider
   }
 
   /** @private */
@@ -564,7 +617,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
    * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
-   * @throws {Error} If the paymaster simulation reports AA50 (account does not hold enough of the paymaster token to cover the gas cost).
    */
   async _getUserOperationGasCost (txs, config) {
     const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)

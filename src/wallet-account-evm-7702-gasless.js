@@ -129,7 +129,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * The uint8 arrays are bound to the wallet account, so any external change will reflect to the internal representation. For this reason,
    * it's strongly recommended to treat the key pair as a read-only view of the keys. While it's still technically possible to alter their
    * content, client code should never do so.
-   * 
+   *
    * @type {KeyPair}
    */
   get keyPair () {
@@ -198,7 +198,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const mergedConfig = { ...this._config, ...config }
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -232,7 +232,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
   async sendTransaction (tx, config) {
-    const mergedConfig = { ...this._config, ...config }
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -262,9 +262,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @param {EvmTransferOptions} options - The transfer's options.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
+   * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
    */
   async transfer (options, config) {
-    const mergedConfig = { ...this._config, ...config }
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
       this._validateConfig(mergedConfig)

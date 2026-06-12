@@ -88,6 +88,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @param {EvmTransferOptions} options - The transfer's options.
      * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
      * @returns {Promise<TransferResult>} The transfer's result.
+     * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
      */
     transfer(options: EvmTransferOptions, config?: Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>): Promise<TransferResult>;
     /**

@@ -20,7 +20,11 @@ import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
 import { BrowserProvider, JsonRpcProvider } from 'ethers'
 
+import FailoverProvider from '@tetherto/wdk-failover-provider'
+
 import WalletAccountEvm7702Gasless from './wallet-account-evm-7702-gasless.js'
+
+import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('ethers').Provider} Provider */
 
@@ -46,18 +50,36 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
      */
     this._config = config
 
-    const { provider } = config
+    /**
+     * An ethers provider to interact with a node of the blockchain.
+     *
+     * @protected
+     * @type {Provider | undefined}
+     */
+    this._provider = undefined
 
-    if (provider) {
-      /**
-       * An ethers provider to interact with a node of the blockchain.
-       *
-       * @protected
-       * @type {Provider | undefined}
-       */
-      this._provider = typeof provider === 'string'
-        ? new JsonRpcProvider(provider)
-        : new BrowserProvider(provider)
+    const { provider, retries = 3 } = config
+
+    if (Array.isArray(provider)) {
+      if (!provider.length) {
+        throw new ConfigurationError("The 'provider' option cannot be set to an empty list.")
+      }
+
+      const failoverProvider = new FailoverProvider({ retries })
+
+      for (const entry of provider) {
+        const option = typeof entry === 'string'
+          ? new JsonRpcProvider(entry)
+          : new BrowserProvider(entry)
+        failoverProvider.addProvider(option)
+      }
+
+      this._provider = failoverProvider.initialize()
+    } else if (provider) {
+      this._provider =
+        typeof provider === 'string'
+          ? new JsonRpcProvider(provider)
+          : new BrowserProvider(provider)
     }
   }
 
@@ -97,6 +119,7 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
    * Returns the current fee rates.
    *
    * @returns {Promise<FeeRates>} The fee rates (in weis).
+   * @throws {Error} If the wallet is not connected to a provider.
    */
   async getFeeRates () {
     if (!this._provider) {
