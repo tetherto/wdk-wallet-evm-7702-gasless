@@ -67,7 +67,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * Quotes the costs of a send transaction operation. Caches the built user
      * operation against the serialized transaction so that a subsequent
      * sendTransaction call with the same tx can skip the gas-estimation +
-     * paymaster round-trip. Cache entries expire after 2 minutes.
+     * paymaster round-trip, after a lightweight on-chain nonce check that
+     * re-quotes only if the nonce has moved. Cache entries expire after 2 minutes.
      *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
      * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
