@@ -261,7 +261,7 @@ export type Evm7702GaslessWalletCommonConfig = {
      */
     bundlerUrl: string;
     /**
-     * - The url of the paymaster service if different from bundlerUrl (e.g. for Candide which uses separate endpoints).
+     * - The url of the paymaster service when it differs from bundlerUrl. Omit when one url serves both the bundler and paymaster (e.g. Candide, Pimlico).
      */
     paymasterUrl?: string;
     /**
