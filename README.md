@@ -61,16 +61,18 @@ const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
 })
 ```
 
-### Using Candide (Separate Paymaster Endpoint)
+### Using Candide
 
-Candide uses separate bundler and paymaster URLs. Use the `paymasterUrl` field:
+Candide serves the bundler and paymaster from a single unified URL, so you only need `bundlerUrl` — the paymaster is reached at the same endpoint. The chain is selected by its chain ID in the path. Use the public endpoint (rate-limited, no key required) or an authenticated endpoint with an API key from the [dashboard](https://dashboard.candide.dev):
+
+- Public: `https://api.candide.dev/public/v3/{chainId}`
+- Authenticated: `https://api.candide.dev/api/v3/{chainId}/{apiKey}`
 
 ```javascript
 const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
   provider: 'https://rpc.mevblocker.io/fast',
   delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
-  bundlerUrl: 'https://api.candide.dev/bundler/v3/1/YOUR_KEY',
-  paymasterUrl: 'https://api.candide.dev/paymaster/v3/1/YOUR_KEY',
+  bundlerUrl: 'https://api.candide.dev/api/v3/1/YOUR_API_KEY',
   isSponsored: true,
   sponsorshipPolicyId: 'your_policy_id'
 })
@@ -226,7 +228,7 @@ wallet.dispose()  // Dispose all accounts
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `paymasterUrl` | `string` | URL of the paymaster service, if different from `bundlerUrl` (e.g. Candide) |
+| `paymasterUrl` | `string` | URL of the paymaster service, when it differs from `bundlerUrl`. Omit when one URL serves both the bundler and paymaster (e.g. Candide, Pimlico) |
 | `retries` | `number` | Additional retry attempts for provider failover arrays. Total attempts are `1 + retries`. Defaults to `3` |
 
 ### Sponsored Mode
