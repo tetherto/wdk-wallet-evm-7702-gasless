@@ -346,7 +346,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         expect(createOverrides.maxPriorityFeePerGas).toBe(150_000_000_000n)
       })
 
-      test('should accept a provider as a failover array of URLs and forward the first to abstractionkit', async () => {
+      test('should accept a provider as a failover array of URLs and forward the failover provider to abstractionkit', async () => {
         const ARRAY_CONFIG = {
           ...PAYMASTER_TOKEN_CONFIG,
           provider: ['https://primary.url/', 'https://failover.url/']
@@ -360,7 +360,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         const pmAccount = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, ARRAY_CONFIG)
         await pmAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' })
 
-        expect(createUserOperationMock.mock.calls[0][1]).toBe('https://primary.url/')
+        expect(createUserOperationMock.mock.calls[0][1]).toBe(pmAccount._provider)
       })
 
       test('should compute the fee via paymaster exchange rate when tokenCost is not provided', async () => {
