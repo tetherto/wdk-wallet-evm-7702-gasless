@@ -25,6 +25,7 @@ const createPaymasterUserOperationMock = jest.fn()
 const sendUserOperationMock = jest.fn()
 const getUserOperationReceiptMock = jest.fn()
 const sendJsonRpcRequestMock = jest.fn()
+const fetchAccountNonceMock = jest.fn()
 
 const Simple7702AccountMock = jest.fn().mockImplementation(() => ({
   createUserOperation: createUserOperationMock
@@ -45,7 +46,8 @@ jest.unstable_mockModule('abstractionkit', () => ({
   Simple7702Account: Simple7702AccountMock,
   Bundler: BundlerMock,
   Erc7677Paymaster: Erc7677PaymasterMock,
-  sendJsonRpcRequest: sendJsonRpcRequestMock
+  sendJsonRpcRequest: sendJsonRpcRequestMock,
+  fetchAccountNonce: fetchAccountNonceMock
 }))
 
 const { WalletAccountEvm7702Gasless, WalletAccountReadOnlyEvm7702Gasless } = await import('../index.js')
@@ -117,6 +119,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       createUserOperationMock.mockResolvedValue({ ...DUMMY_SPONSORED_OP })
       createPaymasterUserOperationMock.mockResolvedValue({ userOperation: { ...DUMMY_SPONSORED_OP } })
       sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+      fetchAccountNonceMock.mockResolvedValue(DUMMY_SPONSORED_OP.nonce)
   
       account = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
     })
@@ -353,6 +356,33 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         expect(hash).toBe(DUMMY_USER_OP_HASH)
         expect(fee).toBe(0n)
         expect(createUserOperationMock.mock.calls[0][3].eip7702Auth).toBeUndefined()
+      })
+
+      test('should allocate sequential nonces for back-to-back sends', async () => {
+        const DELEGATED_CODE = '0xef0100' + SPONSORED_CONFIG.delegationAddress.slice(2).toLowerCase()
+
+        const DELEGATED_PROVIDER = {
+          request: jest.fn(async ({ method }) => {
+            if (method === 'eth_chainId') return '0x1'
+            if (method === 'eth_getCode') return DELEGATED_CODE
+            if (method === 'eth_getTransactionCount') return '0x0'
+            if (method === 'net_version') return '1'
+            return null
+          })
+        }
+
+        const delegatedAccount = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", {
+          ...SPONSORED_CONFIG,
+          provider: DELEGATED_PROVIDER
+        })
+
+        fetchAccountNonceMock.mockResolvedValue(7n)
+
+        await delegatedAccount.sendTransaction({ to: ACCOUNT.address, value: 1, data: '0x' })
+        await delegatedAccount.sendTransaction({ to: ACCOUNT.address, value: 2, data: '0x' })
+
+        expect(createUserOperationMock.mock.calls[0][3].nonce).toBe(7n)
+        expect(createUserOperationMock.mock.calls[1][3].nonce).toBe(8n)
       })
     })
   

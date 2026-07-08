@@ -4,7 +4,7 @@ import path from 'path'
 import { ethers } from 'ethers'
 import { alto } from 'prool/instances'
 import { paymaster } from '@pimlico/mock-paymaster'
-import { ENTRYPOINT_V8, Erc7677Paymaster, Simple7702Account } from 'abstractionkit'
+import { ENTRYPOINT_V8, Erc7677Paymaster, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
 
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 
@@ -731,5 +731,33 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
     expect(transferFee).toBeGreaterThan(0n)
 
     gasCostSpy.mockRestore()
+  }, TIMEOUT)
+
+  test('should send two concurrent transactions with sequential nonces', async () => {
+    const account0 = await wallet.getAccountByPath("0'/0/0")
+    account0._quoteCache.clear()
+    account0._reservedNonces.clear()
+
+    const TX_A = { to: ACCOUNT1.address, value: 0 }
+    const TX_B = { to: ACCOUNT0.address, value: 0 }
+
+    const nonceBefore = await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address)
+
+    const [resA, resB] = await Promise.all([
+      account0.sendTransaction(TX_A),
+      account0.sendTransaction(TX_B)
+    ])
+
+    const [receiptA, receiptB] = await Promise.all([
+      waitForTx(resA.hash, account0),
+      waitForTx(resB.hash, account0)
+    ])
+
+    expect(receiptA.status).toBe(1)
+    expect(receiptB.status).toBe(1)
+    expect(resA.hash).not.toBe(resB.hash)
+
+    const nonceAfter = await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address)
+    expect(nonceAfter).toBe(nonceBefore + 2n)
   }, TIMEOUT)
 })

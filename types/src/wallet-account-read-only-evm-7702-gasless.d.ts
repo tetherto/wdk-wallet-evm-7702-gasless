@@ -160,9 +160,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @protected
      * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
      * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+     * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional build overrides forwarded to `_buildSponsoredUserOperation` (e.g. an explicit EntryPoint nonce).
      * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
      */
-    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<UserOperationGasCost>;
+    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: BuildSponsoredUserOperationOverrides): Promise<UserOperationGasCost>;
     /** @private */
     private _getSmartAccount;
     /** @private */
@@ -222,6 +223,10 @@ export type BuildSponsoredUserOperationOverrides = {
      * - Pre-signed EIP-7702 authorization tuple to include in the user operation.
      */
     eip7702Auth?: Eip7702AuthorizationOverride;
+    /**
+     * - Explicit EntryPoint nonce for the user operation. When omitted, abstractionkit derives it from the on-chain nonce.
+     */
+    nonce?: bigint;
 };
 export type SponsoredUserOperation = {
     /**

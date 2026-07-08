@@ -61,6 +61,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} BuildSponsoredUserOperationOverrides
  * @property {Eip7702AuthorizationOverride} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+ * @property {bigint} [nonce] - Explicit EntryPoint nonce for the user operation. When omitted, abstractionkit derives it from the on-chain nonce.
  */
 
 /**
@@ -457,6 +458,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
     const createOverrides = {
       ...(overrides.eip7702Auth ? { eip7702Auth: overrides.eip7702Auth } : {}),
+      ...(overrides.nonce !== undefined ? { nonce: overrides.nonce } : {}),
       maxFeePerGas,
       maxPriorityFeePerGas
     }
@@ -616,10 +618,11 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @protected
    * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+   * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional build overrides forwarded to `_buildSponsoredUserOperation` (e.g. an explicit EntryPoint nonce).
    * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
    */
-  async _getUserOperationGasCost (txs, config) {
-    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
+  async _getUserOperationGasCost (txs, config, overrides) {
+    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config, overrides)
 
     let fee
     if (tokenQuote?.tokenCost != null) {

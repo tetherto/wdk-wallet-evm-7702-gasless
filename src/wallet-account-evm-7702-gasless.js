@@ -18,7 +18,7 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { ENTRYPOINT_V8, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
+import { AbstractionKitError, ENTRYPOINT_V8, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
@@ -53,6 +53,25 @@ const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
 
 const QUOTE_CACHE_TTL_MS = 2 * 60 * 1000
+
+const NONCE_READ_TIMEOUT_MS = 30 * 1000
+
+/**
+ * Races a promise against a timeout, rejecting if it does not settle in time.
+ * The timer is always cleared so a pending timeout never keeps the event loop alive.
+ *
+ * @template T
+ * @param {Promise<T>} promise - The promise to bound.
+ * @param {number} ms - The timeout in milliseconds.
+ * @returns {Promise<T>} The promise's result, or a rejection if it times out.
+ */
+const withTimeout = (promise, ms) => {
+  let timer
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('Timed out reading the on-chain account nonce.')), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -103,6 +122,12 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @type {Map<string, TransactionQuote>}
      */
     this._quoteCache = new Map()
+
+    /** @private */
+    this._reservedNonces = new Set()
+
+    /** @private */
+    this._nonceLock = Promise.resolve()
   }
 
   /**
@@ -239,22 +264,16 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       this._validateConfig(mergedConfig)
     }
 
-    const { isSponsored } = mergedConfig
+    const txs = [tx].flat()
+    const prepared = await this._prepareForSend(tx, txs, mergedConfig)
 
-    let cached = await this._consumeFreshQuote(tx)
-    let fee = 0n
-
-    if (cached) {
-      fee = cached.fee
-    } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
-      fee = BigInt(result.fee)
-      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
+    try {
+      const hash = await this._sendUserOperation(txs, { config: mergedConfig, cached: prepared })
+      return { hash, fee: prepared.fee }
+    } catch (error) {
+      this._maybeReleaseNonceOnRejection(error, prepared.sponsoredOp?.nonce)
+      throw error
     }
-
-    const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
-
-    return { hash, fee }
   }
 
   /**
@@ -276,24 +295,21 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    let cached = await this._consumeFreshQuote(tx)
-    let fee = 0n
+    const txs = [tx]
+    const prepared = await this._prepareForSend(tx, txs, mergedConfig)
 
-    if (cached) {
-      fee = cached.fee
-    } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx], mergedConfig)
-      fee = BigInt(result.fee)
-      cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
-    }
-
-    if (!isSponsored && transferMaxFee !== undefined && fee >= transferMaxFee) {
+    if (!isSponsored && transferMaxFee !== undefined && prepared.fee >= transferMaxFee) {
+      this._releaseNonce(prepared.sponsoredOp?.nonce)
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
-
-    return { hash, fee }
+    try {
+      const hash = await this._sendUserOperation(txs, { config: mergedConfig, cached: prepared })
+      return { hash, fee: prepared.fee }
+    } catch (error) {
+      this._maybeReleaseNonceOnRejection(error, prepared.sponsoredOp?.nonce)
+      throw error
+    }
   }
 
   /**
@@ -347,7 +363,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     if (cached?.sponsoredOp && eip7702Auth === null) {
       sponsoredOp = cached.sponsoredOp
     } else {
-      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
+      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth, nonce: cached?.sponsoredOp?.nonce })
       sponsoredOp = userOperation
     }
 
@@ -364,13 +380,85 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _consumeFreshQuote (tx) {
-    const cached = this._consumeCachedQuote(tx)
-    if (!cached?.sponsoredOp) return cached
+  async _prepareForSend (tx, txs, config) {
+    const allocatedNonce = await this._allocateNonce()
 
-    const onChainNonce = await fetchAccountNonce(this._provider, ENTRYPOINT_V8, this._address)
+    try {
+      const cached = this._consumeCachedQuote(tx)
+      if (cached?.sponsoredOp && cached.sponsoredOp.nonce === allocatedNonce) {
+        return cached
+      }
+      return await this._buildAtNonce(txs, allocatedNonce, config)
+    } catch (error) {
+      this._releaseNonce(allocatedNonce)
+      throw error
+    }
+  }
 
-    return cached.sponsoredOp.nonce === onChainNonce ? cached : null
+  /** @private */
+  async _buildAtNonce (txs, allocatedNonce, config) {
+    if (config.isSponsored) {
+      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { nonce: allocatedNonce })
+      return { fee: 0n, sponsoredOp: userOperation }
+    }
+
+    const { fee, sponsoredOp, tokenQuote } = await this._getUserOperationGasCost(txs, config, { nonce: allocatedNonce })
+    return { fee: BigInt(fee), sponsoredOp, tokenQuote }
+  }
+
+  /** @private */
+  async _allocateNonce () {
+    const prev = this._nonceLock
+    let release = () => {}
+    this._nonceLock = new Promise(resolve => { release = resolve })
+
+    try {
+      await prev
+      const onChainNonce = await withTimeout(
+        fetchAccountNonce(this._provider, ENTRYPOINT_V8, this._address),
+        NONCE_READ_TIMEOUT_MS
+      )
+
+      for (const reserved of this._reservedNonces) {
+        if (reserved < onChainNonce) this._reservedNonces.delete(reserved)
+      }
+
+      let candidate = onChainNonce
+      while (this._reservedNonces.has(candidate)) candidate += 1n
+      this._reservedNonces.add(candidate)
+
+      return candidate
+    } finally {
+      release()
+    }
+  }
+
+  /** @private */
+  _releaseNonce (nonce) {
+    if (nonce !== undefined && nonce !== null) this._reservedNonces.delete(nonce)
+  }
+
+  /** @private */
+  _maybeReleaseNonceOnRejection (error, nonce) {
+    if (WalletAccountEvm7702Gasless._isPreAcceptanceError(error)) {
+      this._releaseNonce(nonce)
+    }
+  }
+
+  /** @private */
+  static _isPreAcceptanceError (error) {
+    const message = `${error?.message ?? ''} ${error?.cause?.message ?? ''}`.toLowerCase()
+
+    if (error instanceof AbstractionKitError) {
+      return [
+        'aa10', 'aa13', 'aa14', 'aa21', 'aa22', 'aa23', 'aa24', 'aa25', 'aa26',
+        'aa31', 'aa32', 'aa33', 'aa34', 'aa40', 'aa41', 'aa50', 'aa51',
+        'nonce', 'already known', 'replacement underpriced', 'underpriced',
+        'fee too low', 'sender already constructed'
+      ].some(marker => message.includes(marker))
+    }
+
+    return message.includes('not enough funds')
   }
 
   /** @private */

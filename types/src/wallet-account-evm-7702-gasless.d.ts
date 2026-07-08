@@ -107,7 +107,17 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     /** @private */
     private _sendUserOperation;
     /** @private */
-    private _consumeFreshQuote;
+    private _prepareForSend;
+    /** @private */
+    private _buildAtNonce;
+    /** @private */
+    private _allocateNonce;
+    /** @private */
+    private _releaseNonce;
+    /** @private */
+    private _maybeReleaseNonceOnRejection;
+    /** @private */
+    private static _isPreAcceptanceError;
     /** @private */
     private _consumeCachedQuote;
     /** @private */
@@ -125,6 +135,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @type {Map<string, TransactionQuote>}
      */
     private _quoteCache: Map<string, TransactionQuote>;
+    /** @private */
+    private _reservedNonces;
+    /** @private */
+    private _nonceLock;
 }
 export type IWalletAccount = import("@tetherto/wdk-wallet").IWalletAccount;
 export type KeyPair = import("@tetherto/wdk-wallet-evm").KeyPair;
