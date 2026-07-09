@@ -11,6 +11,7 @@ import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 import { MOCK_PAYMASTER_TOKEN_ADDRESS, mintMockTokens } from '../helpers/mock-paymaster-token.js'
 import { discoverPaymasterAddress } from '../helpers/erc-7677-discovery.js'
 import { deploy, transfer, balanceOf } from '../helpers/test-token.js'
+import { plantMainnetContracts } from '../helpers/mainnet-contracts.js'
 
 const detectProvider = Erc7677Paymaster.detectProvider
 jest.spyOn(Erc7677Paymaster, 'detectProvider').mockImplementation((url) => {
@@ -139,6 +140,8 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
   let paymasterAddress
 
   beforeAll(async () => {
+    await plantMainnetContracts(ethersProvider)
+
     const servers = await setupServers()
 
     bundlerInstance = servers.bundlerInstance
