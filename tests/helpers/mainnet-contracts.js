@@ -1,11 +1,14 @@
 import MainnetContracts from '../artifacts/MainnetContracts.json' with { type: 'json' }
 
-// The erc-4337 flows expect these contracts at fixed, well-known addresses:
-// the EntryPoints and the v0.7 SenderCreator, the Safe proxy factory,
-// singletons, 4337 module and MultiSend, and the CREATE2 deployer that the
-// bundler and paymaster use to deploy their own helpers. This plants their
-// bytecode (snapshotted from mainnet in MainnetContracts.json) so a local
-// chain can execute user operations.
+/**
+ * Plants the mainnet contracts snapshotted in MainnetContracts.json on a local chain.
+ *
+ * Each contract's bytecode is set at its mainnet address via `hardhat_setCode`, making the
+ * contracts available at their well-known addresses without deploying them.
+ *
+ * @param {import('ethers').JsonRpcProvider} provider - The provider connected to the local hardhat node.
+ * @returns {Promise<void>}
+ */
 export async function plantMainnetContracts (provider) {
   for (const [address, code] of Object.entries(MainnetContracts)) {
     await provider.send('hardhat_setCode', [address, code])
