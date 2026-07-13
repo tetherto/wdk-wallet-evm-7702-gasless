@@ -157,6 +157,28 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /**
+   * Signs a transaction, producing a self-contained user operation that can later be broadcast
+   * with `sendTransaction` (or `quoteSendTransaction`'d) without any further owner interaction.
+   *
+   * The pre-signed EIP-7702 authorization is baked in when the EOA is not yet delegated to the
+   * configured address. Note that the nonce is fixed at sign time, so a signed operation must be
+   * broadcast before the account's nonce moves.
+   *
+   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+   * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Promise<UserOperationV8>} The signed user operation.
+   */
+  async signTransaction (tx, config) {
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+
+    if (config) {
+      this._validateConfig(mergedConfig)
+    }
+
+    return await this._buildSignedUserOperation([tx].flat(), { config: mergedConfig })
+  }
+
+  /**
    * Approves a specific amount of tokens to a spender.
    *
    * @param {ApproveOptions} options - The approve options.
@@ -194,7 +216,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * paymaster round-trip, after a lightweight on-chain nonce check that
    * re-quotes only if the nonce has moved. Cache entries expire after 2 minutes.
    *
-   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+   * An already-signed user operation (as returned by `signTransaction`) may also be passed; in that
+   * case its fee is read from its own gas fields (in token-paymaster mode this reflects the native
+   * gas ceiling, not the token amount) and no gas-estimation or paymaster round-trip is performed.
+   *
+   * @param {EvmTransaction | EvmTransaction[] | UserOperationV8} tx - The transaction, an array of multiple transactions to send in batch, or an already-signed user operation.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
@@ -206,6 +232,10 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
 
     const { isSponsored } = mergedConfig
+
+    if (WalletAccountReadOnlyEvm7702Gasless._isSignedUserOperation(tx)) {
+      return { fee: isSponsored ? 0n : WalletAccountReadOnlyEvm7702Gasless._getSignedUserOperationFee(tx) }
+    }
 
     if (isSponsored) {
       return { fee: 0n }
@@ -228,7 +258,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   /**
    * Sends a transaction.
    *
-   * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
+   * An already-signed user operation (as returned by `signTransaction`) may also be passed; in that
+   * case it is broadcast directly to the bundler, reusing the nonce and EIP-7702 authorization baked
+   * in at sign time.
+   *
+   * @param {EvmTransaction | EvmTransaction[] | UserOperationV8} tx - The transaction, an array of multiple transactions to send in batch, or an already-signed user operation.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
    */
@@ -240,6 +274,14 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
 
     const { isSponsored } = mergedConfig
+
+    if (WalletAccountReadOnlyEvm7702Gasless._isSignedUserOperation(tx)) {
+      const fee = isSponsored ? 0n : WalletAccountReadOnlyEvm7702Gasless._getSignedUserOperationFee(tx)
+
+      const hash = await this._broadcastSignedUserOperation(tx)
+
+      return { hash, fee }
+    }
 
     let cached = await this._consumeFreshQuote(tx)
     let fee = 0n
@@ -339,8 +381,20 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     }
   }
 
-  /** @private */
-  async _sendUserOperation (txs, { config, cached }) {
+  /**
+   * Builds a paymaster-sponsored user operation and signs it with the owner account.
+   * The pre-signed EIP-7702 authorization is baked in when the EOA is not yet delegated
+   * to the configured address, so the returned operation is self-contained and can be
+   * broadcast later without any further owner interaction.
+   *
+   * @private
+   * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+   * @param {Object} params - The build parameters.
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} params.config - The merged wallet configuration.
+   * @param {TransactionQuote} [params.cached] - A fresh cached quote whose built operation can be reused.
+   * @returns {Promise<UserOperationV8>} The signed user operation.
+   */
+  async _buildSignedUserOperation (txs, { config, cached }) {
     const eip7702Auth = await this._getAuthorization(config)
 
     let sponsoredOp
@@ -360,7 +414,25 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       message: typedData.message
     })
 
-    return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+    return sponsoredOp
+  }
+
+  /** @private */
+  async _sendUserOperation (txs, { config, cached }) {
+    const sponsoredOp = await this._buildSignedUserOperation(txs, { config, cached })
+
+    return await this._broadcastSignedUserOperation(sponsoredOp)
+  }
+
+  /**
+   * Broadcasts an already-signed user operation directly to the bundler.
+   *
+   * @private
+   * @param {UserOperationV8} userOp - The signed user operation.
+   * @returns {Promise<string>} The user operation hash.
+   */
+  async _broadcastSignedUserOperation (userOp) {
+    return await this._getBundler().sendUserOperation(userOp, ENTRYPOINT_V8)
   }
 
   /** @private */
