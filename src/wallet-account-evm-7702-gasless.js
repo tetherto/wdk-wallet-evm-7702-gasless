@@ -216,8 +216,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Quotes the costs of a send transaction operation. Caches the built user
    * operation against the serialized transaction so that a subsequent
    * sendTransaction call with the same tx can skip the gas-estimation +
-   * paymaster round-trip, after a lightweight on-chain nonce check that
-   * re-quotes only if the nonce has moved. Cache entries expire after 2 minutes.
+   * paymaster round-trip. The cached operation is reused only if it was built at the
+   * same nonce the send allocates from the local nonce tracker; otherwise the
+   * transaction is re-quoted at the allocated nonce. Cache entries expire after 2 minutes.
    *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
@@ -267,13 +268,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const txs = [tx].flat()
     const prepared = await this._prepareForSend(tx, txs, mergedConfig)
 
-    try {
-      const hash = await this._sendUserOperation(txs, { config: mergedConfig, cached: prepared })
-      return { hash, fee: prepared.fee }
-    } catch (error) {
-      this._maybeReleaseNonceOnRejection(error, prepared.sponsoredOp?.nonce)
-      throw error
-    }
+    const hash = await this._sendUserOperation(prepared)
+
+    return { hash, fee: prepared.fee }
   }
 
   /**
@@ -303,13 +300,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    try {
-      const hash = await this._sendUserOperation(txs, { config: mergedConfig, cached: prepared })
-      return { hash, fee: prepared.fee }
-    } catch (error) {
-      this._maybeReleaseNonceOnRejection(error, prepared.sponsoredOp?.nonce)
-      throw error
-    }
+    const hash = await this._sendUserOperation(prepared)
+
+    return { hash, fee: prepared.fee }
   }
 
   /**
@@ -356,27 +349,29 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _sendUserOperation (txs, { config, cached }) {
-    const eip7702Auth = await this._getAuthorization(config)
+  async _sendUserOperation (prepared) {
+    const sponsoredOp = prepared.sponsoredOp
 
-    let sponsoredOp
-    if (cached?.sponsoredOp && eip7702Auth === null) {
-      sponsoredOp = cached.sponsoredOp
-    } else {
-      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth, nonce: cached?.sponsoredOp?.nonce })
-      sponsoredOp = userOperation
+    try {
+      const chainId = await this._getChainId()
+      const typedData = Simple7702Account.getUserOperationEip712Data(sponsoredOp, chainId)
+
+      sponsoredOp.signature = await this._ownerAccount.signTypedData({
+        domain: typedData.domain,
+        types: typedData.types,
+        message: typedData.message
+      })
+    } catch (error) {
+      this._releaseNonce(sponsoredOp.nonce)
+      throw error
     }
 
-    const chainId = await this._getChainId()
-    const typedData = Simple7702Account.getUserOperationEip712Data(sponsoredOp, chainId)
-
-    sponsoredOp.signature = await this._ownerAccount.signTypedData({
-      domain: typedData.domain,
-      types: typedData.types,
-      message: typedData.message
-    })
-
-    return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+    try {
+      return await this._getBundler().sendUserOperation(sponsoredOp, ENTRYPOINT_V8)
+    } catch (error) {
+      this._maybeReleaseNonceOnRejection(error, sponsoredOp.nonce)
+      throw error
+    }
   }
 
   /** @private */
@@ -384,11 +379,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const allocatedNonce = await this._allocateNonce()
 
     try {
+      const eip7702Auth = await this._getAuthorization(config)
+
       const cached = this._consumeCachedQuote(tx)
-      if (cached?.sponsoredOp && cached.sponsoredOp.nonce === allocatedNonce) {
+      if (cached?.sponsoredOp && cached.sponsoredOp.nonce === allocatedNonce && eip7702Auth === null) {
         return cached
       }
-      return await this._buildAtNonce(txs, allocatedNonce, config)
+      return await this._buildAtNonce(txs, allocatedNonce, config, eip7702Auth)
     } catch (error) {
       this._releaseNonce(allocatedNonce)
       throw error
@@ -396,13 +393,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _buildAtNonce (txs, allocatedNonce, config) {
+  async _buildAtNonce (txs, allocatedNonce, config, eip7702Auth) {
     if (config.isSponsored) {
-      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { nonce: allocatedNonce })
+      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth, nonce: allocatedNonce })
       return { fee: 0n, sponsoredOp: userOperation }
     }
 
-    const { fee, sponsoredOp, tokenQuote } = await this._getUserOperationGasCost(txs, config, { nonce: allocatedNonce })
+    const { fee, sponsoredOp, tokenQuote } = await this._getUserOperationGasCost(txs, config, { eip7702Auth, nonce: allocatedNonce })
     return { fee: BigInt(fee), sponsoredOp, tokenQuote }
   }
 

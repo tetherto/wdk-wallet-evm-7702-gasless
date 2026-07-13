@@ -440,7 +440,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @protected
    * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration (base config merged with any per-call overrides).
-   * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (currently only the pre-signed 7702 authorization).
+   * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional overrides for the build step (the pre-signed 7702 authorization and/or an explicit EntryPoint nonce).
    * @returns {Promise<SponsoredUserOperation>} The paymaster-populated user operation plus the token-quote data (when applicable).
    * @throws {Error} If the token paymaster reports AA50 (account does not hold the paymaster token).
    * @throws {ConfigurationError} If the configured `paymasterAddress` does not match the address returned by the paymaster RPC.

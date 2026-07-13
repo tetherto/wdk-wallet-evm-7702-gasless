@@ -358,6 +358,16 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         expect(createUserOperationMock.mock.calls[0][3].eip7702Auth).toBeUndefined()
       })
 
+      test('should attach the EIP-7702 authorization to a single build for an undelegated account', async () => {
+        await account.sendTransaction({ to: ACCOUNT.address, value: 1, data: '0x' })
+
+        expect(createUserOperationMock).toHaveBeenCalledTimes(1)
+        const { eip7702Auth } = createUserOperationMock.mock.calls[0][3]
+        expect(eip7702Auth.address).toBe(SPONSORED_CONFIG.delegationAddress)
+        expect(eip7702Auth.chainId).toBe(1n)
+        expect(eip7702Auth.nonce).toBe(0n)
+      })
+
       test('should allocate sequential nonces for back-to-back sends', async () => {
         const DELEGATED_CODE = '0xef0100' + SPONSORED_CONFIG.delegationAddress.slice(2).toLowerCase()
 

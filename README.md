@@ -364,6 +364,10 @@ The bundler returns ~27k `callGasLimit` for USDT transfers, but USDT's non-stand
 
 The bundler's gas estimate doesn't meet its own validation margin. Error: "verificationGas should have extra 2000 gas, has only -15791". Observed on Sepolia with the ERC-20 token paymaster flow.
 
+**3. No queued (future) nonce support — concurrent / back-to-back sends**
+
+The local nonce tracker allocates sequential nonces (N, N+1, …) so back-to-back or `Promise.all` sends don't collide locally. But *landing* them without waiting for each to mine requires a bundler that **queues future nonces**. Candide's public endpoint validates strictly against mined state: while op N is pending, an op at N+1 is rejected (`eth_estimateUserOperationGas` → AA25; sponsorship validation reverts), and succeeds only once N mines. Pimlico's alto queues future nonces, so concurrent sends land there. The tracker's allocation, nonce-release, and failure semantics are bundler-agnostic and prevent local nonce collisions on any bundler — only the "land before the prior mines" capability depends on queuing support.
+
 **Related Candide GitHub issues:**
 - [abstractionkit #57](https://github.com/candidelabs/abstractionkit/issues/57): Gas estimation ran before approval was prepended, producing wrong estimates
 - [abstractionkit #78](https://github.com/candidelabs/abstractionkit/issues/78) (open): Simple7702Account ignoring paymaster fields in overrides
