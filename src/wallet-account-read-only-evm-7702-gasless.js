@@ -26,7 +26,6 @@ import {
   ENTRYPOINT_V8,
   Erc7677Paymaster,
   Simple7702Account,
-  calculateUserOperationMaxGasCost,
   sendJsonRpcRequest
 } from 'abstractionkit'
 
@@ -641,37 +640,5 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     }
 
     return { fee, sponsoredOp, tokenQuote }
-  }
-
-  /**
-   * Determines whether a value is an already-signed UserOperation (as returned by `signTransaction`)
-   * rather than an unsigned {@link EvmTransaction} (or array of them).
-   *
-   * @protected
-   * @param {EvmTransaction | EvmTransaction[] | UserOperationV8} tx - The value to inspect.
-   * @returns {boolean} True if the value is a signed UserOperation.
-   */
-  static _isSignedUserOperation (tx) {
-    return tx !== null &&
-      typeof tx === 'object' &&
-      !Array.isArray(tx) &&
-      tx.sender !== undefined &&
-      tx.callData !== undefined &&
-      tx.signature !== undefined
-  }
-
-  /**
-   * Computes the fee for an already-signed UserOperation from its own gas fields.
-   *
-   * In token-paymaster mode this reflects the native gas ceiling (in wei) rather than the token
-   * amount: the token cost is set by the paymaster at sign time and cannot be reproduced from the
-   * signed UserOperation.
-   *
-   * @protected
-   * @param {UserOperationV8} userOp - The signed UserOperation.
-   * @returns {bigint} The fee, in the account's native coin (wei).
-   */
-  static _getSignedUserOperationFee (userOp) {
-    return BigInt(calculateUserOperationMaxGasCost(userOp))
   }
 }

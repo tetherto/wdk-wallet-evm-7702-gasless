@@ -163,6 +163,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {Promise<string>} The user operation hash.
      */
     private _broadcastSignedUserOperation;
+    private static _isSignedUserOperation;
+    private static _getSignedUserOperationFee;
     /** @private */
     private _consumeFreshQuote;
     /** @private */

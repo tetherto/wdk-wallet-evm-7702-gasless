@@ -18,7 +18,7 @@ import { Contract } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
-import { ENTRYPOINT_V8, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
+import { ENTRYPOINT_V8, Simple7702Account, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
@@ -233,8 +233,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored } = mergedConfig
 
-    if (WalletAccountReadOnlyEvm7702Gasless._isSignedUserOperation(tx)) {
-      return { fee: isSponsored ? 0n : WalletAccountReadOnlyEvm7702Gasless._getSignedUserOperationFee(tx) }
+    if (WalletAccountEvm7702Gasless._isSignedUserOperation(tx)) {
+      return { fee: isSponsored ? 0n : WalletAccountEvm7702Gasless._getSignedUserOperationFee(tx) }
     }
 
     if (isSponsored) {
@@ -275,8 +275,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored } = mergedConfig
 
-    if (WalletAccountReadOnlyEvm7702Gasless._isSignedUserOperation(tx)) {
-      const fee = isSponsored ? 0n : WalletAccountReadOnlyEvm7702Gasless._getSignedUserOperationFee(tx)
+    if (WalletAccountEvm7702Gasless._isSignedUserOperation(tx)) {
+      const fee = isSponsored ? 0n : WalletAccountEvm7702Gasless._getSignedUserOperationFee(tx)
 
       const hash = await this._broadcastSignedUserOperation(tx)
 
@@ -433,6 +433,38 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    */
   async _broadcastSignedUserOperation (userOp) {
     return await this._getBundler().sendUserOperation(userOp, ENTRYPOINT_V8)
+  }
+
+  /**
+   * Determines whether a value is an already-signed UserOperation (as returned by `signTransaction`)
+   * rather than an unsigned {@link EvmTransaction} (or array of them).
+   *
+   * @private
+   * @param {EvmTransaction | EvmTransaction[] | UserOperationV8} tx - The value to inspect.
+   * @returns {boolean} True if the value is a signed UserOperation.
+   */
+  static _isSignedUserOperation (tx) {
+    return tx !== null &&
+      typeof tx === 'object' &&
+      !Array.isArray(tx) &&
+      tx.sender !== undefined &&
+      tx.callData !== undefined &&
+      tx.signature !== undefined
+  }
+
+  /**
+   * Computes the fee for an already-signed UserOperation from its own gas fields.
+   *
+   * In token-paymaster mode this reflects the native gas ceiling (in wei) rather than the token
+   * amount: the token cost is set by the paymaster at sign time and cannot be reproduced from the
+   * signed UserOperation.
+   *
+   * @private
+   * @param {UserOperationV8} userOp - The signed UserOperation.
+   * @returns {bigint} The fee, in the account's native coin (wei).
+   */
+  static _getSignedUserOperationFee (userOp) {
+    return BigInt(calculateUserOperationMaxGasCost(userOp))
   }
 
   /** @private */

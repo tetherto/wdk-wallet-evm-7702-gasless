@@ -1,26 +1,5 @@
 export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountReadOnly {
     /**
-     * Determines whether a value is an already-signed UserOperation (as returned by `signTransaction`)
-     * rather than an unsigned {@link EvmTransaction} (or array of them).
-     *
-     * @protected
-     * @param {EvmTransaction | EvmTransaction[] | UserOperationV8} tx - The value to inspect.
-     * @returns {boolean} True if the value is a signed UserOperation.
-     */
-    protected static _isSignedUserOperation(tx: EvmTransaction | EvmTransaction[] | UserOperationV8): boolean;
-    /**
-     * Computes the fee for an already-signed UserOperation from its own gas fields.
-     *
-     * In token-paymaster mode this reflects the native gas ceiling (in wei) rather than the token
-     * amount: the token cost is set by the paymaster at sign time and cannot be reproduced from the
-     * signed UserOperation.
-     *
-     * @protected
-     * @param {UserOperationV8} userOp - The signed UserOperation.
-     * @returns {bigint} The fee, in the account's native coin (wei).
-     */
-    protected static _getSignedUserOperationFee(userOp: UserOperationV8): bigint;
-    /**
      * Creates a new read-only evm 7702 gasless wallet account.
      *
      * @param {string} address - The evm account's address (the EOA address directly).
