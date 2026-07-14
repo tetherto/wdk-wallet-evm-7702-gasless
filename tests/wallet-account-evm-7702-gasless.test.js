@@ -394,6 +394,20 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         expect(createUserOperationMock.mock.calls[0][3].nonce).toBe(7n)
         expect(createUserOperationMock.mock.calls[1][3].nonce).toBe(8n)
       })
+
+      test('should release the nonce after a pre-acceptance send error so the next send reuses it', async () => {
+        createUserOperationMock.mockImplementation(async (_calls, _provider, _bundler, overrides) => ({ ...DUMMY_SPONSORED_OP, nonce: overrides.nonce }))
+        createPaymasterUserOperationMock.mockImplementation(async (_smartAccount, op) => ({ userOperation: { ...op } }))
+        fetchAccountNonceMock.mockResolvedValue(5n)
+        sendUserOperationMock.mockRejectedValueOnce(new actualAk.AbstractionKitError('BUNDLER_ERROR', 'AA25 invalid account nonce'))
+
+        await expect(account.sendTransaction({ to: ACCOUNT.address, value: 1, data: '0x' }))
+          .rejects.toThrow('AA25 invalid account nonce')
+
+        await account.sendTransaction({ to: ACCOUNT.address, value: 2, data: '0x' })
+
+        expect(createUserOperationMock.mock.calls[1][3].nonce).toBe(5n)
+      })
     })
   
     describe('transfer', () => {
