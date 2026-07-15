@@ -1,9 +1,8 @@
-require('@nomicfoundation/hardhat-ethers')
-
 /** @type {import('hardhat/config').HardhatUserConfig} */
-module.exports = {
+export default {
   networks: {
     hardhat: {
+      type: 'edr-simulated',
       chainId: 1,
       accounts: {
         mnemonic: 'test test test test test test test test test test test junk',
@@ -12,13 +11,9 @@ module.exports = {
         count: 20,
         accountsBalance: '10000000000000000000000'
       },
-      forking: {
-        url: 'https://ethereum-rpc.publicnode.com',
-        enabled: true
-      },
       mining: {
-        autoMine: true,
-        interval: [0, 0]
+        auto: true,
+        interval: 1000
       }
     }
   }
