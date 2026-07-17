@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
-import { Contract } from 'ethers'
+import { Contract, keccak256, toUtf8Bytes } from 'ethers'
 
 const actualWalletEvm = await import('@tetherto/wdk-wallet-evm')
 const actualAk = await import('abstractionkit')
@@ -25,6 +25,7 @@ const createPaymasterUserOperationMock = jest.fn()
 const sendUserOperationMock = jest.fn()
 const getUserOperationReceiptMock = jest.fn()
 const sendJsonRpcRequestMock = jest.fn()
+const fetchAccountNonceMock = jest.fn()
 
 const Simple7702AccountMock = jest.fn().mockImplementation(() => ({
   createUserOperation: createUserOperationMock
@@ -45,7 +46,8 @@ jest.unstable_mockModule('abstractionkit', () => ({
   Simple7702Account: Simple7702AccountMock,
   Bundler: BundlerMock,
   Erc7677Paymaster: Erc7677PaymasterMock,
-  sendJsonRpcRequest: sendJsonRpcRequestMock
+  sendJsonRpcRequest: sendJsonRpcRequestMock,
+  fetchAccountNonce: fetchAccountNonceMock
 }))
 
 const { WalletAccountEvm7702Gasless, WalletAccountReadOnlyEvm7702Gasless } = await import('../index.js')
@@ -117,6 +119,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       createUserOperationMock.mockResolvedValue({ ...DUMMY_SPONSORED_OP })
       createPaymasterUserOperationMock.mockResolvedValue({ userOperation: { ...DUMMY_SPONSORED_OP } })
       sendUserOperationMock.mockResolvedValue(DUMMY_USER_OP_HASH)
+      fetchAccountNonceMock.mockResolvedValue(0n)
   
       account = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
     })
@@ -124,7 +127,59 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
     afterEach(() => {
       account.dispose()
     })
-  
+
+    describe('nonce lanes', () => {
+      const TX = { to: ACCOUNT.address, value: 1, data: '0x' }
+      const MAX_UINT192 = (1n << 192n) - 1n
+      const MAX_UINT64 = (1n << 64n) - 1n
+
+      test('should not set a nonce override on a normal send (default key-0 path)', async () => {
+        await account.sendTransaction(TX)
+
+        expect(createUserOperationMock.mock.calls[0][3].nonce).toBeUndefined()
+        expect(fetchAccountNonceMock).not.toHaveBeenCalled()
+      })
+
+      test('should place a parallel send in a fresh lane (non-zero key, sequence 0) without an on-chain nonce read', async () => {
+        await account.sendTransaction(TX, { parallel: true })
+
+        const nonce = createUserOperationMock.mock.calls[0][3].nonce
+        expect(nonce >> 64n).not.toBe(0n)
+        expect(nonce & MAX_UINT64).toBe(0n)
+        expect(fetchAccountNonceMock).not.toHaveBeenCalled()
+      })
+
+      test('should give each parallel send its own distinct lane', async () => {
+        await Promise.all([account.sendTransaction(TX, { parallel: true }), account.sendTransaction(TX, { parallel: true })])
+
+        const keyA = createUserOperationMock.mock.calls[0][3].nonce >> 64n
+        const keyB = createUserOperationMock.mock.calls[1][3].nonce >> 64n
+        expect(keyA).not.toBe(keyB)
+      })
+
+      test('should use a raw bigint nonceKey verbatim, at its current sequence', async () => {
+        const KEY = 42n
+        const FULL_NONCE = (KEY << 64n) | 3n
+        fetchAccountNonceMock.mockResolvedValue(FULL_NONCE)
+        const address = await account.getAddress()
+
+        await account.sendTransaction(TX, { nonceKey: KEY })
+
+        expect(fetchAccountNonceMock).toHaveBeenCalledWith(expect.anything(), actualAk.ENTRYPOINT_V8, address, KEY)
+        expect(createUserOperationMock.mock.calls[0][3].nonce).toBe(FULL_NONCE)
+      })
+
+      test('should derive a deterministic lane key from a string nonceKey', async () => {
+        const LABEL = 'payments'
+        const EXPECTED_KEY = BigInt(keccak256(toUtf8Bytes(LABEL))) & MAX_UINT192
+        const address = await account.getAddress()
+
+        await account.sendTransaction(TX, { nonceKey: LABEL })
+
+        expect(fetchAccountNonceMock).toHaveBeenCalledWith(expect.anything(), actualAk.ENTRYPOINT_V8, address, EXPECTED_KEY)
+      })
+    })
+
     describe('constructor', () => {
       test('should successfully initialize an account for the given seed phrase and path', () => {
         expect(account.index).toBe(ACCOUNT.index)
