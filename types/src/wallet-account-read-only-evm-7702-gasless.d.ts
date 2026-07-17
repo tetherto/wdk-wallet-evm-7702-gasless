@@ -278,7 +278,7 @@ export type Evm7702GaslessWalletCommonConfig = {
      */
     parallel?: boolean;
     /**
-     * - Send in an explicit nonce lane. A string is hashed to a deterministic key — a reusable named lane that resumes the same sequence across sessions; a bigint is used as the raw uint192 key. Sends sharing a key are ordered sequentially; different keys run in parallel. Overridable per call.
+     * - Send in an explicit nonce lane. A string is hashed to a deterministic key — a reusable named lane that resumes the same sequence across sessions; a bigint is used as the raw uint192 key and must be within the uint192 range (0 to 2^192 - 1), otherwise the send throws. Sends sharing a key are ordered sequentially; different keys run in parallel. Overridable per call.
      */
     nonceKey?: bigint | string;
 };

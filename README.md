@@ -183,6 +183,8 @@ Both options can also be set at construction (`new WalletManagerEvm7702Gasless(s
 
 **Notes:**
 - **Requires a bundler that accepts parallel keys** (Pimlico and Candide both do). There is no SDK-side lane limit; respect your bundler's cap (e.g. Pimlico allows up to 100 parallel).
+- **Per-sender mempool cap (≈4).** Per [ERC-7562](https://eips.ethereum.org/EIPS/eip-7562), a standard bundler mempool holds at most **4** in-flight UserOperations from a single sender at once (`SAME_SENDER_MEMPOOL_COUNT = 4`). Firing more than 4 lanes concurrently may be rejected until earlier ops are mined. This is a mempool validation limit, separate from parallel-key support, and can be raised by the bundler operator if needed.
+- **Delegate first.** The first UserOperation from a fresh account carries the EIP-7702 delegation authorization, which is tied to the account's EOA nonce. Let one send land (delegating the account) before firing concurrent lanes, so parallel sends don't race on the initial delegation.
 - `parallel: true` mints a **new** EntryPoint nonce slot per send (a one-time gas cost per lane, paid by the paymaster; permanent state). For repeated parallel workloads, reuse a fixed set of lanes with `nonceKey` labels instead of a fresh key every time.
 - A single lane is still **sequential**: two concurrent sends sharing the same `nonceKey` will collide. Concurrency comes from using **different** keys — for dependent, ordered operations, batch them into one UserOperation instead.
 

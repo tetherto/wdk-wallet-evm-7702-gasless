@@ -234,6 +234,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
+   * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async sendTransaction (tx, config) {
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
@@ -269,6 +270,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
+   * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async transfer (options, config) {
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
@@ -383,9 +385,15 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   /** @private */
   async _resolveNonce (config) {
     if (config.nonceKey !== undefined && config.nonceKey !== null) {
-      const key = typeof config.nonceKey === 'string'
-        ? BigInt(keccak256(toUtf8Bytes(config.nonceKey))) & MAX_UINT192
-        : BigInt(config.nonceKey)
+      let key
+      if (typeof config.nonceKey === 'string') {
+        key = BigInt(keccak256(toUtf8Bytes(config.nonceKey))) & MAX_UINT192
+      } else {
+        key = BigInt(config.nonceKey)
+        if (key < 0n || key > MAX_UINT192) {
+          throw new Error('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
+        }
+      }
       return await fetchAccountNonce(this._provider, ENTRYPOINT_V8, this._address, key)
     }
 

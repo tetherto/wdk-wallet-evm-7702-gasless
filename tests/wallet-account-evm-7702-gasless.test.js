@@ -178,6 +178,17 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
 
         expect(fetchAccountNonceMock).toHaveBeenCalledWith(expect.anything(), actualAk.ENTRYPOINT_V8, address, EXPECTED_KEY)
       })
+
+      test('should reject a bigint nonceKey above the uint192 range', async () => {
+        await expect(account.sendTransaction(TX, { nonceKey: MAX_UINT192 + 1n }))
+          .rejects.toThrow('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
+        expect(fetchAccountNonceMock).not.toHaveBeenCalled()
+      })
+
+      test('should reject a negative bigint nonceKey', async () => {
+        await expect(account.sendTransaction(TX, { nonceKey: -1n }))
+          .rejects.toThrow('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
+      })
     })
 
     describe('constructor', () => {
