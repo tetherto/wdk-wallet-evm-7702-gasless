@@ -477,7 +477,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
   
         disposableAccount.dispose()
   
-        expect(disposableAccount.keyPair.privateKey).toBeUndefined()
+        expect(disposableAccount.keyPair.privateKey).toBeNull()
       })
     })
   })
