@@ -61,6 +61,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} BuildSponsoredUserOperationOverrides
  * @property {Eip7702AuthorizationOverride} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
+ * @property {bigint} [nonce] - Explicit EntryPoint nonce for the user operation. When omitted, abstractionkit derives it from the on-chain nonce.
  */
 
 /**
@@ -83,6 +84,8 @@ import { ConfigurationError } from './errors.js'
  * @property {string} bundlerUrl - The url of the bundler/paymaster service.
  * @property {string} [paymasterUrl] - The url of the paymaster service when it differs from bundlerUrl. Omit when one url serves both the bundler and paymaster (e.g. Candide, Pimlico).
  * @property {string} delegationAddress - The address of the smart account implementation to delegate to (e.g. '0xe6Cae83BdE06E4c305530e199D7217f42808555B' for SimpleAccount).
+ * @property {boolean} [parallel] - When true, each send is placed in a fresh, independent nonce lane (a random 192-bit key at sequence 0) so concurrent or back-to-back sends don't collide on the nonce. Ordering between such sends is not guaranteed and each consumes a new EntryPoint nonce slot. Ignored when `nonceKey` is set. Overridable per call.
+ * @property {bigint | string} [nonceKey] - Send in an explicit nonce lane. A string is hashed to a deterministic key — a reusable named lane that resumes the same sequence across sessions; a bigint is used as the raw uint192 key and must be within the uint192 range (0 to 2^192 - 1), otherwise the send throws. Sends sharing a key are ordered sequentially; different keys run in parallel. Overridable per call.
  */
 
 /**
@@ -457,6 +460,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
     const createOverrides = {
       ...(overrides.eip7702Auth ? { eip7702Auth: overrides.eip7702Auth } : {}),
+      ...(overrides.nonce !== undefined ? { nonce: overrides.nonce } : {}),
       maxFeePerGas,
       maxPriorityFeePerGas
     }
@@ -616,10 +620,11 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @protected
    * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+   * @param {BuildSponsoredUserOperationOverrides} [overrides] - Optional build overrides forwarded to `_buildSponsoredUserOperation` (e.g. an explicit EntryPoint nonce).
    * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
    */
-  async _getUserOperationGasCost (txs, config) {
-    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config)
+  async _getUserOperationGasCost (txs, config, overrides) {
+    const { userOperation: sponsoredOp, tokenQuote } = await this._buildSponsoredUserOperation(txs, config, overrides)
 
     let fee
     if (tokenQuote?.tokenCost != null) {

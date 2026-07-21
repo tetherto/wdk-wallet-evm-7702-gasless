@@ -14,7 +14,7 @@
 
 'use strict'
 
-import { Contract } from 'ethers'
+import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
@@ -53,6 +53,9 @@ const USDT_MAINNET_ADDRESS = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
 const ERC20_APPROVE_ABI = ['function approve(address spender, uint256 amount) returns (bool)']
 
 const QUOTE_CACHE_TTL_MS = 2 * 60 * 1000
+
+const NONCE_KEY_SHIFT = 64n
+const MAX_UINT192 = (1n << 192n) - 1n
 
 /** @implements {IWalletAccount} */
 export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEvm7702Gasless {
@@ -231,6 +234,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransactionResult>} The transaction's result.
+   * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async sendTransaction (tx, config) {
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
@@ -241,18 +245,20 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const { isSponsored } = mergedConfig
 
-    let cached = await this._consumeFreshQuote(tx)
+    const nonce = await this._resolveNonce(mergedConfig)
+
+    let cached = nonce === undefined ? await this._consumeFreshQuote(tx) : null
     let fee = 0n
 
     if (cached) {
       fee = cached.fee
     } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+      const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig, { nonce })
       fee = BigInt(result.fee)
       cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
     }
 
-    const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached })
+    const hash = await this._sendUserOperation([tx].flat(), { config: mergedConfig, cached, nonce })
 
     return { hash, fee }
   }
@@ -264,6 +270,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
+   * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async transfer (options, config) {
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
@@ -276,13 +283,15 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
 
     const tx = await WalletAccountEvm._getTransferTransaction(options)
 
-    let cached = await this._consumeFreshQuote(tx)
+    const nonce = await this._resolveNonce(mergedConfig)
+
+    let cached = nonce === undefined ? await this._consumeFreshQuote(tx) : null
     let fee = 0n
 
     if (cached) {
       fee = cached.fee
     } else if (!isSponsored) {
-      const result = await this._getUserOperationGasCost([tx], mergedConfig)
+      const result = await this._getUserOperationGasCost([tx], mergedConfig, { nonce })
       fee = BigInt(result.fee)
       cached = { fee, sponsoredOp: result.sponsoredOp, tokenQuote: result.tokenQuote }
     }
@@ -291,7 +300,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       throw new Error('Exceeded maximum fee cost for transfer operation.')
     }
 
-    const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached })
+    const hash = await this._sendUserOperation([tx], { config: mergedConfig, cached, nonce })
 
     return { hash, fee }
   }
@@ -340,14 +349,14 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _sendUserOperation (txs, { config, cached }) {
+  async _sendUserOperation (txs, { config, cached, nonce }) {
     const eip7702Auth = await this._getAuthorization(config)
 
     let sponsoredOp
     if (cached?.sponsoredOp && eip7702Auth === null) {
       sponsoredOp = cached.sponsoredOp
     } else {
-      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth })
+      const { userOperation } = await this._buildSponsoredUserOperation(txs, config, { eip7702Auth, nonce })
       sponsoredOp = userOperation
     }
 
@@ -371,6 +380,28 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     const onChainNonce = await fetchAccountNonce(this._provider, ENTRYPOINT_V8, this._address)
 
     return cached.sponsoredOp.nonce === onChainNonce ? cached : null
+  }
+
+  /** @private */
+  async _resolveNonce (config) {
+    if (config.nonceKey !== undefined && config.nonceKey !== null) {
+      let key
+      if (typeof config.nonceKey === 'string') {
+        key = BigInt(keccak256(toUtf8Bytes(config.nonceKey))) & MAX_UINT192
+      } else {
+        key = BigInt(config.nonceKey)
+        if (key < 0n || key > MAX_UINT192) {
+          throw new Error('nonceKey must be within the uint192 range (0 to 2^192 - 1).')
+        }
+      }
+      return await fetchAccountNonce(this._provider, ENTRYPOINT_V8, this._address, key)
+    }
+
+    if (config.parallel) {
+      return BigInt(hexlify(randomBytes(24))) << NONCE_KEY_SHIFT
+    }
+
+    return undefined
   }
 
   /** @private */

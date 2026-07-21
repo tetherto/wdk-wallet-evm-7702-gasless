@@ -4,7 +4,7 @@ import path from 'path'
 import { ethers } from 'ethers'
 import { alto } from 'prool/instances'
 import { paymaster } from '@pimlico/mock-paymaster'
-import { ENTRYPOINT_V8, Erc7677Paymaster, Simple7702Account } from 'abstractionkit'
+import { ENTRYPOINT_V8, Erc7677Paymaster, Simple7702Account, fetchAccountNonce } from 'abstractionkit'
 
 import WalletManagerEvm7702Gasless from '@tetherto/wdk-wallet-evm-7702-gasless'
 
@@ -735,4 +735,78 @@ describe('@wdk/wallet-evm-7702-gasless', () => {
 
     gasCostSpy.mockRestore()
   }, TIMEOUT)
+
+  describe('nonce lanes', () => {
+    const MAX_UINT64 = (1n << 64n) - 1n
+
+    test('should send two parallel-lane transactions concurrently without touching the key-0 nonce', async () => {
+      const account0 = await wallet.getAccountByPath("0'/0/0")
+
+      const key0Before = await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address)
+
+      const [resA, resB] = await Promise.all([
+        account0.sendTransaction({ to: ACCOUNT1.address, value: 0 }, { parallel: true }),
+        account0.sendTransaction({ to: ACCOUNT0.address, value: 0 }, { parallel: true })
+      ])
+
+      expect(resA.hash).not.toBe(resB.hash)
+
+      const [receiptA, receiptB] = await Promise.all([
+        waitForTx(resA.hash, account0),
+        waitForTx(resB.hash, account0)
+      ])
+      expect(receiptA.status).toBe(1)
+      expect(receiptB.status).toBe(1)
+
+      const key0After = await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address)
+      expect(key0After).toBe(key0Before)
+    }, TIMEOUT)
+
+    test('should advance a named lane sequence across two sends', async () => {
+      const account0 = await wallet.getAccountByPath("0'/0/0")
+      const LANE_KEY = BigInt(ethers.keccak256(ethers.toUtf8Bytes('payments'))) & ((1n << 192n) - 1n)
+
+      const seqBefore = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address, LANE_KEY)) & MAX_UINT64
+
+      const resA = await account0.sendTransaction({ to: ACCOUNT1.address, value: 0 }, { nonceKey: 'payments' })
+      await waitForTx(resA.hash, account0)
+      const resB = await account0.sendTransaction({ to: ACCOUNT1.address, value: 0 }, { nonceKey: 'payments' })
+      await waitForTx(resB.hash, account0)
+
+      const seqAfter = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address, LANE_KEY)) & MAX_UINT64
+      expect(seqAfter).toBe(seqBefore + 2n)
+    }, TIMEOUT)
+
+    test('should prefer an explicit nonceKey over parallel', async () => {
+      const account0 = await wallet.getAccountByPath("0'/0/0")
+      const LANE_KEY = 42n
+
+      const seqBefore = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address, LANE_KEY)) & MAX_UINT64
+
+      const res = await account0.sendTransaction({ to: ACCOUNT1.address, value: 0 }, { parallel: true, nonceKey: LANE_KEY })
+      const receipt = await waitForTx(res.hash, account0)
+      expect(receipt.status).toBe(1)
+
+      const seqAfter = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT0.address, LANE_KEY)) & MAX_UINT64
+      expect(seqAfter).toBe(seqBefore + 1n)
+    }, TIMEOUT)
+
+    test('should transfer tokens through a named lane', async () => {
+      const account1 = await wallet.getAccountByPath("0'/0/1")
+      const LANE_KEY = BigInt(ethers.keccak256(ethers.toUtf8Bytes('payroll'))) & ((1n << 192n) - 1n)
+
+      const seqBefore = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT1.address, LANE_KEY)) & MAX_UINT64
+
+      const { hash } = await account1.transfer({
+        token: MOCK_PAYMASTER_TOKEN_ADDRESS,
+        recipient: ACCOUNT0.address,
+        amount: 1n
+      }, { nonceKey: 'payroll' })
+      const receipt = await waitForTx(hash, account1)
+      expect(receipt.status).toBe(1)
+
+      const seqAfter = (await fetchAccountNonce('http://localhost:8545', ENTRY_POINT_ADDRESS, ACCOUNT1.address, LANE_KEY)) & MAX_UINT64
+      expect(seqAfter).toBe(seqBefore + 1n)
+    }, TIMEOUT)
+  })
 })

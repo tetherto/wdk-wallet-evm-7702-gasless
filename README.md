@@ -162,6 +162,32 @@ const quote = await account.quoteSendTransaction({
 })
 ```
 
+### Concurrent / Parallel Sends (nonce lanes)
+
+By default every send uses the account's key-0 nonce, so it is sequential — a second send fired before the first is mined would collide on the nonce. To send independent operations concurrently, put each in its own **nonce lane** (an ERC-4337 two-dimensional nonce: a 192-bit `key` with its own sequence). Ops in different keys have no ordering constraint and validate independently, so they can be submitted at the same time.
+
+```javascript
+// parallel: true → each send gets a fresh random lane (sequence 0). Fire them together:
+const [a, b] = await Promise.all([
+  account.sendTransaction({ to: '0x...', value: 0n, data: '0x' }, { parallel: true }),
+  account.sendTransaction({ to: '0x...', value: 0n, data: '0x' }, { parallel: true })
+])
+
+// nonceKey: a string is a reusable named lane (same label resumes the same lane across sessions);
+// a bigint is used as the raw uint192 key. Same key = ordered; different keys = parallel.
+await account.sendTransaction(tx, { nonceKey: 'payments' })
+await account.sendTransaction(tx, { nonceKey: 1n })
+```
+
+Both options can also be set at construction (`new WalletManagerEvm7702Gasless(seed, { ..., parallel: true })`) and overridden per call. Precedence: `nonceKey` > `parallel` > default (key 0).
+
+**Notes:**
+- **Requires a bundler that accepts parallel keys** (Pimlico and Candide both do). There is no SDK-side lane limit; respect your bundler's cap (e.g. Pimlico allows up to 100 parallel).
+- **Per-sender mempool cap (≈4).** Per [ERC-7562](https://eips.ethereum.org/EIPS/eip-7562), a standard bundler mempool holds at most **4** in-flight UserOperations from a single sender at once (`SAME_SENDER_MEMPOOL_COUNT = 4`). Firing more than 4 lanes concurrently may be rejected until earlier ops are mined. This is a mempool validation limit, separate from parallel-key support, and can be raised by the bundler operator if needed.
+- **Delegate first.** The first UserOperation from a fresh account carries the EIP-7702 delegation authorization, which is tied to the account's EOA nonce. Let one send land (delegating the account) before firing concurrent lanes, so parallel sends don't race on the initial delegation.
+- `parallel: true` mints a **new** EntryPoint nonce slot per send (a one-time gas cost per lane, paid by the paymaster; permanent state). For repeated parallel workloads, reuse a fixed set of lanes with `nonceKey` labels instead of a fresh key every time.
+- A single lane is still **sequential**: two concurrent sends sharing the same `nonceKey` will collide. Concurrency comes from using **different** keys — for dependent, ordered operations, batch them into one UserOperation instead.
+
 ### Token Approvals
 
 ```javascript
