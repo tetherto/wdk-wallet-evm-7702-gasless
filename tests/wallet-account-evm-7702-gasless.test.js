@@ -238,12 +238,60 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       })
     })
   
+    describe('signTransaction', () => {
+      const EXPECTED_USER_OP_SIGNATURE = '0xe9739f744de8042aad75f8f9c66d4ebf90458eafa1d0dafb3013404029da548c68cc295755e8ebaf690db3b1655b580b5c3e8bcf3680273386914ccb2ba8736f1c'
+
+      test('should return a signed user operation without broadcasting', async () => {
+        const TRANSACTION = { to: ACCOUNT.address, value: 1, data: '0x' }
+
+        const signedOp = await account.signTransaction(TRANSACTION)
+
+        expect(signedOp).toEqual({ ...DUMMY_SPONSORED_OP, signature: EXPECTED_USER_OP_SIGNATURE })
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('signed user operations', () => {
+      const SIGNED_OP = { ...DUMMY_SPONSORED_OP, signature: '0xdeadbeef' }
+
+      test('quoteSendTransaction should quote an already-signed user operation without broadcasting (sponsored)', async () => {
+        const { fee } = await account.quoteSendTransaction(SIGNED_OP)
+
+        expect(fee).toBe(0n)
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+        expect(createUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('quoteSendTransaction should quote an already-signed user operation from its gas fields (token paymaster)', async () => {
+        const pmAccount = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", {
+          ...SPONSORED_CONFIG,
+          isSponsored: false,
+          paymasterAddress: '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
+          paymasterToken: { address: USDT_MAINNET_ADDRESS }
+        })
+
+        const { fee } = await pmAccount.quoteSendTransaction(SIGNED_OP)
+
+        expect(fee).toBe(BigInt(actualAk.calculateUserOperationMaxGasCost(SIGNED_OP)))
+        expect(createPaymasterUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test('sendTransaction should broadcast an already-signed user operation directly', async () => {
+        const { hash, fee } = await account.sendTransaction(SIGNED_OP)
+
+        expect(hash).toBe(DUMMY_USER_OP_HASH)
+        expect(fee).toBe(0n)
+        expect(sendUserOperationMock).toHaveBeenCalledWith(SIGNED_OP, actualAk.ENTRYPOINT_V8)
+        expect(createUserOperationMock).not.toHaveBeenCalled()
+      })
+    })
+
     describe('quoteSendTransaction', () => {
       test('should return zero fee for sponsored transactions', async () => {
         const TX = { to: ACCOUNT.address, value: 1, data: '0x' }
-  
+
         const { fee } = await account.quoteSendTransaction(TX)
-  
+
         expect(fee).toBe(0n)
       })
   

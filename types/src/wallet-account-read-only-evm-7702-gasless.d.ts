@@ -32,6 +32,14 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @type {bigint | undefined}
      */
     protected _chainId: bigint | undefined;
+    /** @private */
+    private _smartAccount;
+    /** @private */
+    private _bundler;
+    /** @private */
+    private _paymaster;
+    /** @private */
+    private _evmReadOnlyAccount;
     /**
      * Returns the account balances for multiple tokens.
      *
@@ -151,18 +159,6 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @throws {ConfigurationError} If the configured `paymasterAddress` does not match the address returned by the paymaster RPC.
      */
     protected _buildSponsoredUserOperation(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">, overrides?: BuildSponsoredUserOperationOverrides): Promise<SponsoredUserOperation>;
-    /**
-     * Builds the user operation and returns the gas cost in the paymaster
-     * token's base units. Reached only on the token-paymaster path —
-     * sponsored flows short-circuit to a zero fee in `quoteSendTransaction`
-     * before calling this method.
-     *
-     * @protected
-     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
-     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
-     * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
-     */
-    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<UserOperationGasCost>;
     /** @private */
     private _getSmartAccount;
     /** @private */
@@ -175,11 +171,18 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     private _estimateFeesPerGas;
     /** @private */
     private _getTokenExchangeRate;
-    /** @private */
-    private _smartAccount;
-    private _bundler;
-    private _paymaster;
-    private _evmReadOnlyAccount;
+    /**
+     * Builds the user operation and returns the gas cost in the paymaster
+     * token's base units. Reached only on the token-paymaster path —
+     * sponsored flows short-circuit to a zero fee in `quoteSendTransaction`
+     * before calling this method.
+     *
+     * @protected
+     * @param {EvmTransaction[]} txs - The transactions to batch into the user operation.
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee'>} config - The merged wallet configuration.
+     * @returns {Promise<UserOperationGasCost>} The fee plus the built user operation and the token-quote data, cacheable between quote and send.
+     */
+    protected _getUserOperationGasCost(txs: EvmTransaction[], config: Omit<Evm7702GaslessWalletConfig, "transferMaxFee">): Promise<UserOperationGasCost>;
 }
 export type Eip1193Provider = import("ethers").Eip1193Provider;
 export type EvmTransaction = import("@tetherto/wdk-wallet-evm").EvmTransaction;
@@ -301,6 +304,4 @@ export type Evm7702GaslessPaymasterTokenConfig = {
 };
 export type Evm7702GaslessWalletConfig = Evm7702GaslessWalletCommonConfig & (Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig);
 import { WalletAccountReadOnly } from '@tetherto/wdk-wallet';
-import { Simple7702Account } from 'abstractionkit';
 import { Bundler } from 'abstractionkit';
-import { Erc7677Paymaster } from 'abstractionkit';
