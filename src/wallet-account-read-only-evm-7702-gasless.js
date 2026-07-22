@@ -61,7 +61,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} BuildSponsoredUserOperationOverrides
  * @property {Eip7702AuthorizationOverride} [eip7702Auth] - Pre-signed EIP-7702 authorization tuple to include in the user operation.
- * @property {bigint} [nonce] - Explicit EntryPoint nonce for the user operation. When omitted, abstractionkit derives it from the on-chain nonce.
+ * @property {bigint} [nonce] - Explicit EntryPoint nonce for the user operation. When omitted, the account derives it from the on-chain nonce.
  */
 
 /**
@@ -85,7 +85,7 @@ import { ConfigurationError } from './errors.js'
  * @property {string} [paymasterUrl] - The url of the paymaster service when it differs from bundlerUrl. Omit when one url serves both the bundler and paymaster (e.g. Candide, Pimlico).
  * @property {string} delegationAddress - The address of the smart account implementation to delegate to (e.g. '0xe6Cae83BdE06E4c305530e199D7217f42808555B' for SimpleAccount).
  * @property {boolean} [parallel] - When true, each send is placed in a fresh, independent nonce lane (a random 192-bit key at sequence 0) so concurrent or back-to-back sends don't collide on the nonce. Ordering between such sends is not guaranteed and each consumes a new EntryPoint nonce slot. Ignored when `nonceKey` is set. Overridable per call.
- * @property {bigint | string} [nonceKey] - Send in an explicit nonce lane. A string is hashed to a deterministic key — a reusable named lane that resumes the same sequence across sessions; a bigint is used as the raw uint192 key and must be within the uint192 range (0 to 2^192 - 1), otherwise the send throws. Sends sharing a key are ordered sequentially; different keys run in parallel. Overridable per call.
+ * @property {number | bigint | string} [nonceKey] - Send in an explicit nonce lane. A string is hashed to a deterministic key — a reusable named lane that resumes the same sequence across sessions; a number or bigint is used as the raw uint192 key and must be within the uint192 range (0 to 2^192 - 1), otherwise the send throws (pass a bigint or string for keys above 2^53). Sends sharing a key are ordered sequentially; different keys run in parallel. Overridable per call.
  */
 
 /**
