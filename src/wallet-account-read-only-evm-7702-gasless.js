@@ -16,7 +16,7 @@
 
 import { isError, JsonRpcProvider } from 'ethers'
 
-import { WalletAccountReadOnly } from '@tetherto/wdk-wallet'
+import { WalletAccountReadOnly, NoSuchElementError } from '@tetherto/wdk-wallet'
 
 import { WalletAccountReadOnlyEvm } from '@tetherto/wdk-wallet-evm'
 
@@ -47,6 +47,19 @@ import { ConfigurationError } from './errors.js'
 /** @typedef {import('abstractionkit').UserOperationV8} UserOperationV8 */
 /** @typedef {import('abstractionkit').UserOperationReceiptResult} UserOperationReceipt */
 /** @typedef {import('abstractionkit').TokenQuote} TokenQuote */
+
+/** @typedef {import('@tetherto/wdk-wallet').TransactionReceipt} TransactionReceipt */
+
+/**
+ * A normalized EVM 7702 gasless transaction receipt, extended with the confirmation depth, the native ethers transaction and receipt, and the user operation receipt.
+ *
+ * @typedef {TransactionReceipt & {
+ *   confirmations: number,
+ *   transaction: import('ethers').TransactionResponse | null,
+ *   receipt: EvmTransactionReceipt | null,
+ *   userOperationReceipt: UserOperationReceipt
+ * }} Evm7702GaslessTransactionInfo
+ */
 
 /**
  * @typedef {Object} Eip7702AuthorizationOverride
@@ -264,6 +277,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   /**
    * Returns a transaction's receipt.
    *
+   * @deprecated Use {@link getTransaction} instead, which returns a normalized, finality-based receipt. The raw ethers receipt and the user operation receipt remain available on its `receipt` and `userOperationReceipt` properties.
    * @param {string} hash - The user operation hash.
    * @returns {Promise<EvmTransactionReceipt | null>} The receipt, or null if the transaction has not been included in a block yet.
    */
@@ -278,6 +292,54 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
 
     return await evmReadOnlyAccount.getTransactionReceipt(userOpReceipt.receipt.transactionHash)
   }
+
+  /**
+   * Returns a normalized, finality-based receipt for a user operation. Finality and confirmations come from the bundling transaction; `success` and `fee` come from the user operation.
+   *
+   * @param {string} hash - The user operation hash.
+   * @returns {Promise<Evm7702GaslessTransactionInfo>} The normalized receipt.
+   * @throws {NoSuchElementError} If no user operation has been found for the given hash.
+   */
+  async getTransaction (hash) {
+    const bundler = this._getBundler()
+
+    const userOpByHash = await bundler.getUserOperationByHash(hash)
+    if (!userOpByHash) {
+      throw new NoSuchElementError(`No user operation found for '${hash}'.`)
+    }
+
+    if (!userOpByHash.transactionHash) {
+      return {
+        hash,
+        finality: 'pending',
+        confirmations: 0,
+        transaction: null,
+        receipt: null,
+        userOperationReceipt: null
+      }
+    }
+
+    const [evmReadOnlyAccount, userOpReceipt] = await Promise.all([
+      this._getEvmReadOnlyAccount(),
+      bundler.getUserOperationReceipt(hash)
+    ])
+
+    const info = await evmReadOnlyAccount.getTransaction(userOpByHash.transactionHash)
+    if (!info) {
+      throw new NoSuchElementError(`No user operation found for '${hash}'.`)
+    }
+
+    return {
+      ...info,
+      hash,
+      success: userOpReceipt ? userOpReceipt.success : info.success,
+      fee: userOpReceipt ? userOpReceipt.actualGasCost : info.fee,
+      userOperationReceipt: userOpReceipt
+    }
+  }
+
+  /** @protected @type {number} */
+  static _DEFAULT_WAIT_TIMEOUT = 180000
 
   /**
    * Returns a user operation's receipt.

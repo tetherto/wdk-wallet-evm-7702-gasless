@@ -37,6 +37,7 @@
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').Eip7702AuthorizationOverride} Eip7702AuthorizationOverride */
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').BuildSponsoredUserOperationOverrides} BuildSponsoredUserOperationOverrides */
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').SponsoredUserOperation} SponsoredUserOperation */
+/** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessTransactionInfo} Evm7702GaslessTransactionInfo */
 
 export { default } from './src/wallet-manager-evm-7702-gasless.js'
 

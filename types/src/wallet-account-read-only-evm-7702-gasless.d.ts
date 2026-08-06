@@ -73,10 +73,21 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /**
      * Returns a transaction's receipt.
      *
+     * @deprecated Use {@link getTransaction} instead, which returns a normalized, finality-based receipt. The raw ethers receipt and the user operation receipt remain available on its `receipt` and `userOperationReceipt` properties.
      * @param {string} hash - The user operation hash.
      * @returns {Promise<EvmTransactionReceipt | null>} The receipt, or null if the transaction has not been included in a block yet.
      */
     getTransactionReceipt(hash: string): Promise<EvmTransactionReceipt | null>;
+    /**
+     * Returns a normalized, finality-based receipt for a user operation. Finality and confirmations come from the bundling transaction; `success` and `fee` come from the user operation.
+     *
+     * @param {string} hash - The user operation hash.
+     * @returns {Promise<Evm7702GaslessTransactionInfo>} The normalized receipt.
+     * @throws {NoSuchElementError} If no user operation has been found for the given hash.
+     */
+    getTransaction(hash: string): Promise<Evm7702GaslessTransactionInfo>;
+    /** @protected @type {number} */
+    protected static _DEFAULT_WAIT_TIMEOUT: number;
     /**
      * Returns a user operation's receipt.
      *
@@ -195,6 +206,16 @@ export type TypedData = import("@tetherto/wdk-wallet-evm").TypedData;
 export type UserOperationV8 = import("abstractionkit").UserOperationV8;
 export type UserOperationReceipt = import("abstractionkit").UserOperationReceiptResult;
 export type TokenQuote = import("abstractionkit").TokenQuote;
+export type TransactionReceipt = import("@tetherto/wdk-wallet").TransactionReceipt;
+/**
+ * A normalized EVM 7702 gasless transaction receipt, extended with the confirmation depth, the native ethers transaction and receipt, and the user operation receipt.
+ */
+export type Evm7702GaslessTransactionInfo = TransactionReceipt & {
+    confirmations: number;
+    transaction: import("ethers").TransactionResponse | null;
+    receipt: EvmTransactionReceipt | null;
+    userOperationReceipt: UserOperationReceipt;
+};
 export type Eip7702AuthorizationOverride = {
     /**
      * - The chain id the authorization was signed for.
