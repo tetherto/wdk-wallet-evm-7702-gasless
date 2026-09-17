@@ -113,7 +113,7 @@ import { ConfigurationError } from './errors.js'
 /**
  * @typedef {Object} Evm7702GaslessPaymasterTokenConfig
  * @property {false} [isSponsored] - Whether the paymaster is sponsoring the account.
- * @property {string} [paymasterAddress] - Optional pin on the paymaster smart contract address. When omitted, it's derived from the paymaster RPC (pm_supportedERC20Tokens for Candide, pimlico_getTokenQuotes for Pimlico).
+ * @property {string} paymasterAddress - The paymaster smart contract address to require from the paymaster RPC.
  * @property {Object} paymasterToken - The paymaster token configuration.
  * @property {string} paymasterToken.address - The address of the paymaster token.
  * @property {number | bigint} [transferMaxFee] - The maximum fee, in the paymaster token's base units, accepted for transfer. Ignored when the transaction is sponsored.
@@ -517,6 +517,9 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     if (!config.isSponsored && !config.paymasterToken) {
       throw new ConfigurationError('Missing required paymaster token configuration fields: paymasterToken.')
     }
+    if (!config.isSponsored && !config.paymasterAddress) {
+      throw new ConfigurationError('Missing required paymaster token configuration fields: paymasterAddress.')
+    }
   }
 
   /**
@@ -627,7 +630,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       throw error
     }
 
-    if (!config.isSponsored && config.paymasterAddress && sponsoredOp.paymaster &&
+    if (!config.isSponsored && sponsoredOp.paymaster &&
         sponsoredOp.paymaster.toLowerCase() !== config.paymasterAddress.toLowerCase()) {
       throw new ConfigurationError(
         `paymasterAddress mismatch: configured ${config.paymasterAddress} but RPC ${paymasterUrl} returned ${sponsoredOp.paymaster}.`
