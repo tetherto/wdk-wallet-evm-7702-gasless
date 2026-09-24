@@ -18,13 +18,9 @@ import WalletManager from '@tetherto/wdk-wallet'
 
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
-import { BrowserProvider, JsonRpcProvider } from 'ethers'
-
-import FailoverProvider from '@tetherto/wdk-failover-provider'
-
 import WalletAccountEvm7702Gasless from './wallet-account-evm-7702-gasless.js'
 
-import { ConfigurationError } from './errors.js'
+import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
 /** @typedef {import('ethers').Provider} Provider */
 
@@ -51,36 +47,24 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
     this._config = config
 
     /**
-     * An ethers provider to interact with a node of the blockchain.
+     * The shared ethers provider to interact with a node of the blockchain. Built once here and
+     * passed to every account this manager creates so they reuse a single connection.
      *
      * @protected
      * @type {Provider | undefined}
      */
-    this._provider = undefined
+    this._provider = WalletAccountReadOnlyEvm7702Gasless._buildProvider(config)
+  }
 
-    const { provider, retries = 3 } = config
-
-    if (Array.isArray(provider)) {
-      if (!provider.length) {
-        throw new ConfigurationError("The 'provider' option cannot be set to an empty list.")
-      }
-
-      const failoverProvider = new FailoverProvider({ retries })
-
-      for (const entry of provider) {
-        const option = typeof entry === 'string'
-          ? new JsonRpcProvider(entry)
-          : new BrowserProvider(entry)
-        failoverProvider.addProvider(option)
-      }
-
-      this._provider = failoverProvider.initialize()
-    } else if (provider) {
-      this._provider =
-        typeof provider === 'string'
-          ? new JsonRpcProvider(provider)
-          : new BrowserProvider(provider)
-    }
+  /**
+   * Returns the configuration used to create accounts, with the manager's shared provider injected
+   * last so it is not overwritten by the original `provider` option.
+   *
+   * @private
+   * @returns {Evm7702GaslessWalletConfig} The account configuration.
+   */
+  _accountConfig () {
+    return { ...this._config, provider: this._provider }
   }
 
   /**
@@ -107,7 +91,7 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
    */
   async getAccountByPath (path) {
     if (!this._accounts[path]) {
-      const account = new WalletAccountEvm7702Gasless(this.seed, path, this._config)
+      const account = new WalletAccountEvm7702Gasless(this.seed, path, this._accountConfig())
 
       this._accounts[path] = account
     }
