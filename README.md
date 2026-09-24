@@ -302,7 +302,7 @@ Omitting `entryPointVersion` preserves the previous behavior exactly: the same E
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `paymasterAddress` | `string` (optional) | Pin on the paymaster smart contract address. When omitted, it is derived from the paymaster RPC (`pm_supportedERC20Tokens` for Candide, `pimlico_getTokenQuotes` for Pimlico) |
+| `paymasterAddress` | `string` (required for token-paymaster mode) | Paymaster smart contract address. The RPC response must match this pin before the wallet signs. |
 | `paymasterToken` | `{ address: string }` | ERC-20 token used for gas payment |
 | `transferMaxFee` | `number \| bigint` (optional) | Maximum fee for transfer operations |
 | `transactionMaxFee` | `number \| bigint` (optional) | Maximum fee for sendTransaction and signTransaction operations |
