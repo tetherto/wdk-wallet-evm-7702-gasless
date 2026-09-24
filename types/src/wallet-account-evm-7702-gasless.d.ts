@@ -27,7 +27,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * Creates a new evm 7702 gasless wallet account.
      *
      * @overload
-     * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase.
+     * @param {string | Uint8Array} seed - A BIP-39 mnemonic seed phrase, or a raw BIP-32 master seed (16-64 bytes).
      * @param {string} path - The BIP-44 derivation path (e.g. "0'/0/0").
      * @param {Evm7702GaslessWalletConfig} config - The configuration object.
      */
