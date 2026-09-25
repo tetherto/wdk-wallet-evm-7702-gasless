@@ -87,6 +87,8 @@ const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
 
 ### Wrapping an Existing WalletAccountEvm
 
+Accounts from another installed copy of `@tetherto/wdk-wallet-evm` are supported when they expose a resolved address and the required signing methods. Signing uses the supplied account; disposing the gasless wrapper also disposes that account.
+
 ```javascript
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 import { WalletAccountEvm7702Gasless } from '@tetherto/wdk-wallet-evm-7702-gasless'
