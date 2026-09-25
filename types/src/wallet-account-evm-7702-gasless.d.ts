@@ -36,10 +36,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * Creates a new evm 7702 gasless wallet account from a wallet-evm account.
      *
      * @overload
-     * @param {WalletAccountEvm} account - The wallet-evm account.
+     * @param {Evm7702GaslessOwnerAccount} account - A compatible wallet-evm account, including one from another installed copy of the package.
      * @param {Evm7702GaslessWalletConfig} config - The configuration object.
+     * @throws {ConfigurationError} If the account has no valid address or required signing or disposal method.
      */
-    constructor(account: WalletAccountEvm, config: Evm7702GaslessWalletConfig);
+    constructor(account: Evm7702GaslessOwnerAccount, config: Evm7702GaslessWalletConfig);
     /** @private */
     private _ownerAccount;
     /** @private */
@@ -214,6 +215,11 @@ export type Evm7702GaslessWalletConfig = import("./wallet-account-read-only-evm-
 export type Evm7702GaslessPaymasterTokenConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
 export type TypedData = import("./wallet-account-read-only-evm-7702-gasless.js").TypedData;
+/**
+ * The public wallet-evm account capabilities used by the gasless wallet. The address must
+ * already be resolved; signing and disposal are delegated to the supplied account.
+ */
+export type Evm7702GaslessOwnerAccount = Pick<WalletAccountEvm, "address" | "index" | "path" | "keyPair" | "sign" | "signTypedData" | "signAuthorization" | "dispose">;
 export type TransactionQuote = {
     /**
      * - The estimated fee.

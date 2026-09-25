@@ -35,6 +35,8 @@
 
 /** @typedef {import('./src/wallet-manager-evm-7702-gasless.js').Evm7702GaslessWalletConfig} Evm7702GaslessWalletConfig */
 
+/** @typedef {import('./src/wallet-account-evm-7702-gasless.js').Evm7702GaslessOwnerAccount} Evm7702GaslessOwnerAccount */
+
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessWalletCommonConfig} Evm7702GaslessWalletCommonConfig */
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessPaymasterTokenConfig} Evm7702GaslessPaymasterTokenConfig */
 /** @typedef {import('./src/wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessSponsorshipPolicyConfig} Evm7702GaslessSponsorshipPolicyConfig */
