@@ -1,7 +1,8 @@
 {
   "name": "@tetherto/wdk-wallet-evm-7702-gasless",
   "version": "1.0.0-beta.7",
-  "description": "A simple package to manage BIP-32 wallets for evm blockchains, which implement the eip-7702 standard for gasless account abstraction",
+  "description": "EIP-7702 wallet module for WDK (Wallet Development Kit) by Tether with gasless account abstraction on EVM-compatible blockchains.",
+  "homepage": "https://docs.wdk.tether.io/sdk/wallet-modules/wallet-evm-7702-gasless/",
   "keywords": [
     "wdk",
     "wallet",
