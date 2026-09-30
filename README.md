@@ -2,13 +2,13 @@
 
 **Note**: This package is currently in beta. Please test thoroughly in development environments before using in production.
 
-A simple and secure package to manage gasless EIP-7702 wallets for EVM-compatible blockchains. This package abstracts all EIP-7702 delegation and ERC-4337 UserOperation complexity behind a simple API — call `transfer()` and delegation, UserOp signing, paymaster sponsorship, and token approvals all happen internally.
+An [EIP-7702 wallet module](https://docs.wdk.tether.io/sdk/wallet-modules/wallet-evm-7702-gasless/) for gasless account abstraction on EVM-compatible blockchains, part of WDK (Wallet Development Kit) by Tether. This package abstracts all EIP-7702 delegation and ERC-4337 UserOperation complexity behind a simple API — call `transfer()` and delegation, UserOp signing, paymaster sponsorship, and token approvals all happen internally.
 
 ## About WDK
 
-This module is part of the [**WDK (Wallet Development Kit)**](https://wallet.tether.io/) project, which empowers developers to build secure, non-custodial wallets with unified blockchain access, stateless architecture, and complete user control.
+This module is part of the [**WDK (Wallet Development Kit)**](https://docs.wdk.tether.io/) project, which empowers developers to build secure, non-custodial wallets with unified blockchain access, stateless architecture, and complete user control.
 
-For detailed documentation about the complete WDK ecosystem, visit [docs.wallet.tether.io](https://docs.wallet.tether.io).
+For detailed documentation about the complete WDK ecosystem, visit [docs.wdk.tether.io](https://docs.wdk.tether.io/).
 
 ## Features
 
