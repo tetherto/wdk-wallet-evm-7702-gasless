@@ -69,7 +69,21 @@ const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
 
 ### Using Pimlico
 
-Pimlico is the tested alternative. One URL serves both the bundler and the paymaster, with the API key in the query string, and its token paymaster contract differs from Candide's:
+Pimlico is the tested alternative. One URL serves both the bundler and the paymaster, with the API key in the query string.
+
+In sponsored mode, only the endpoint and the policy ID change from the Candide example:
+
+```javascript
+const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
+  provider: 'https://rpc.mevblocker.io/fast',
+  delegationAddress: '0xe6Cae83BdE06E4c305530e199D7217f42808555B',
+  bundlerUrl: 'https://api.pimlico.io/v2/1/rpc?apikey=YOUR_KEY',
+  isSponsored: true,
+  sponsorshipPolicyId: 'sp_your_policy_id'
+})
+```
+
+In paymaster token mode, Pimlico's token paymaster contract differs from Candide's:
 
 ```javascript
 const wallet = new WalletManagerEvm7702Gasless(seedPhrase, {
