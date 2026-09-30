@@ -39,8 +39,7 @@
     "@tetherto/wdk-wallet-evm": "1.0.0-beta.19",
     "abstractionkit": "0.3.8",
     "bare-node-runtime": "1.2.0",
-    "ethers": "6.17.0",
-    "viem": "2.55.4"
+    "ethers": "6.17.0"
   },
   "devDependencies": {
     "@pimlico/alto": "0.0.19",
@@ -52,6 +51,7 @@
     "prool": "0.0.23",
     "standard": "17.1.2",
     "typescript": "5.8.3",
+    "viem": "2.55.4",
     "wait-on": "8.0.4"
   },
   "devEngines": {
