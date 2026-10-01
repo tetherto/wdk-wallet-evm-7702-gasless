@@ -14,7 +14,7 @@
 
 'use strict'
 
-import WalletManager from '@tetherto/wdk-wallet'
+import WalletManager, { DisposalError } from '@tetherto/wdk-wallet'
 
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm'
 
@@ -75,6 +75,7 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
    * const account = await wallet.getAccount(1);
    * @param {number} [index] - The index of the account to get (default: 0).
    * @returns {Promise<WalletAccountEvm7702Gasless>} The account.
+   * @throws {DisposalError} If the wallet manager has been disposed.
    */
   async getAccount (index = 0) {
     return await this.getAccountByPath(`0'/0/${index}`)
@@ -88,8 +89,13 @@ export default class WalletManagerEvm7702Gasless extends WalletManager {
    * const account = await wallet.getAccountByPath("0'/0/1");
    * @param {string} path - The derivation path (e.g. "0'/0/0").
    * @returns {Promise<WalletAccountEvm7702Gasless>} The account.
+   * @throws {DisposalError} If the wallet manager has been disposed.
    */
   async getAccountByPath (path) {
+    if (this.disposed) {
+      throw new DisposalError('The wallet manager has been disposed.')
+    }
+
     if (!this._accounts[path]) {
       const account = new WalletAccountEvm7702Gasless(this.seed, path, this._accountConfig())
 

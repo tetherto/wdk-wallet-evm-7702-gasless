@@ -55,6 +55,14 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @type {Map<string, TransactionQuote>}
      */
     private _quoteCache;
+    /** @private */
+    private _disposed;
+    /**
+     * True if the account has been disposed.
+     *
+     * @type {boolean}
+     */
+    get disposed(): boolean;
     /**
      * The derivation path's index of this account.
      *
@@ -82,6 +90,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      *
      * @param {string} message - The message to sign.
      * @returns {Promise<string>} The message's signature.
+     * @throws {DisposalError} If the account has been disposed.
      */
     sign(message: string): Promise<string>;
     /**
@@ -89,6 +98,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      *
      * @param {TypedData} typedData - The typed data to sign.
      * @returns {Promise<string>} The typed data signature.
+     * @throws {DisposalError} If the account has been disposed.
      */
     signTypedData({ domain, types, message }: TypedData): Promise<string>;
     /**
@@ -108,6 +118,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {Promise<UserOperationV8>} The signed user operation.
      * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
      * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+     * @throws {DisposalError} If the account has been disposed.
      */
     signTransaction(tx: EvmTransaction | EvmTransaction[], config?: Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>): Promise<UserOperationV8>;
     /**
@@ -117,6 +128,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {Promise<TransactionResult>} The transaction's result.
      * @throws {Error} If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
      * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
+     * @throws {DisposalError} If the account has been disposed.
      */
     approve(options: ApproveOptions): Promise<TransactionResult>;
     /**
@@ -154,6 +166,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {Promise<TransactionResult>} The transaction's result.
      * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
      * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+     * @throws {DisposalError} If the account has been disposed.
      */
     sendTransaction(tx: EvmTransaction | EvmTransaction[] | UserOperationV8, config?: Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>): Promise<TransactionResult>;
     /**
@@ -164,6 +177,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {Promise<TransferResult>} The transfer's result.
      * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
      * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+     * @throws {DisposalError} If the account has been disposed.
      */
     transfer(options: EvmTransferOptions, config?: Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>): Promise<TransferResult>;
     /**

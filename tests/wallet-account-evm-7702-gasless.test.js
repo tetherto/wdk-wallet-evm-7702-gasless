@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import * as bip39 from 'bip39'
 import { Contract, keccak256, toUtf8Bytes } from 'ethers'
+import { DisposalError } from '@tetherto/wdk-wallet'
 
 import { ConfigurationError } from '../src/errors.js'
 
@@ -1007,6 +1008,37 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         disposableAccount.dispose()
   
         expect(disposableAccount.keyPair.privateKey).toBeNull()
+      })
+
+      test('should expose the disposed state', () => {
+        const disposableAccount = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
+
+        expect(disposableAccount.disposed).toBe(false)
+
+        disposableAccount.dispose()
+
+        expect(disposableAccount.disposed).toBe(true)
+      })
+
+      test('should throw DisposalError from signing methods once disposed', async () => {
+        const disposableAccount = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", SPONSORED_CONFIG)
+
+        disposableAccount.dispose()
+
+        const ZERO = '0x0000000000000000000000000000000000000000'
+        const typedData = {
+          domain: { name: 'Test', version: '1', chainId: 1 },
+          types: { Mail: [{ name: 'contents', type: 'string' }] },
+          message: { contents: 'hello' }
+        }
+        const tx = { to: ZERO, value: 0 }
+
+        await expect(disposableAccount.sign('message')).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.signTypedData(typedData)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.signTransaction(tx)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.approve({ token: ZERO, spender: ZERO, amount: 1 })).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.sendTransaction(tx)).rejects.toThrow(DisposalError)
+        await expect(disposableAccount.transfer({ token: ZERO, recipient: ZERO, amount: 1 })).rejects.toThrow(DisposalError)
       })
     })
   })

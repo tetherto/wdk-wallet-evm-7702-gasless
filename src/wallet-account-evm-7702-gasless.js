@@ -16,6 +16,8 @@
 
 import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
+import { DisposalError } from '@tetherto/wdk-wallet'
+
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { JsonRpcNode, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
@@ -107,6 +109,18 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @type {Map<string, TransactionQuote>}
      */
     this._quoteCache = new Map()
+
+    /** @private */
+    this._disposed = false
+  }
+
+  /**
+   * True if the account has been disposed.
+   *
+   * @type {boolean}
+   */
+  get disposed () {
+    return this._disposed
   }
 
   /**
@@ -145,8 +159,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sign (message) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     return await this._ownerAccount.sign(message)
   }
 
@@ -155,8 +174,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     return await this._ownerAccount.signTypedData({ domain, types, message })
   }
 
@@ -177,8 +201,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<UserOperationV8>} The signed user operation.
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTransaction (tx, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -208,8 +237,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransactionResult>} The transaction's result.
    * @throws {Error} If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async approve (options) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const { token, spender, amount } = options
     const chainId = await this._getChainId()
 
@@ -303,8 +337,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransactionResult>} The transaction's result.
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sendTransaction (tx, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -344,8 +383,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async transfer (options, config) {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -382,8 +426,12 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Disposes the wallet account, erasing the private key from the memory.
    */
   dispose () {
+    if (this._disposed) return
+
     this._quoteCache.clear()
     this._ownerAccount.dispose()
+
+    this._disposed = true
   }
 
   /** @private */
