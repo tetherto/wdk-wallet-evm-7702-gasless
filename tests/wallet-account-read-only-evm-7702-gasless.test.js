@@ -184,6 +184,14 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
           .toThrow('Missing required configuration field: delegationAddress.')
       })
 
+      test('should throw if token-paymaster paymasterAddress is missing', () => {
+        const config = { ...PAYMASTER_TOKEN_CONFIG }
+        delete config.paymasterAddress
+
+        expect(() => new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, config))
+          .toThrow('Missing required paymaster token configuration fields: paymasterAddress.')
+      })
+
       test('should throw if neither isSponsored nor paymasterToken is set', () => {
         expect(() => new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, { ...SPONSORED_CONFIG, isSponsored: undefined }))
           .toThrow('Missing required paymaster token configuration fields: paymasterToken.')
