@@ -18,6 +18,7 @@ export type TransactionReceipt = import("@tetherto/wdk-wallet").TransactionRecei
 export type WaitForTransactionTarget = import("@tetherto/wdk-wallet").WaitForTransactionTarget;
 export type WaitForTransactionOptions = import("@tetherto/wdk-wallet").WaitForTransactionOptions;
 export type Evm7702GaslessWalletConfig = import("./src/wallet-manager-evm-7702-gasless.js").Evm7702GaslessWalletConfig;
+export type Evm7702GaslessOwnerAccount = import("./src/wallet-account-evm-7702-gasless.js").Evm7702GaslessOwnerAccount;
 export type Evm7702GaslessWalletCommonConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessWalletCommonConfig;
 export type Evm7702GaslessPaymasterTokenConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessPaymasterTokenConfig;
 export type Evm7702GaslessSponsorshipPolicyConfig = import("./src/wallet-account-read-only-evm-7702-gasless.js").Evm7702GaslessSponsorshipPolicyConfig;
