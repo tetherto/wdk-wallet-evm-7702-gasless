@@ -255,8 +255,8 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       this._validateConfig(mergedConfig)
     }
 
-    // Assert the provider is on the configured chain before `_getAuthorization`
-    // signs a 7702 authorization against a mismatched RPC.
+    // Assert the provider is on the configured chain before building anything
+    // against a mismatched RPC.
     await this._getChainId()
 
     const { isSponsored } = mergedConfig
@@ -269,17 +269,24 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
       return { fee: 0n }
     }
 
-    const eip7702Auth = await this._getAuthorization(mergedConfig)
+    // A quote must not sign: it is excluded from policy evaluation, so a real EIP-7702
+    // authorization signed here would never be seen by the policy engine.
+    const eip7702Auth = await this._getQuoteAuthorization(mergedConfig)
     const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig, { eip7702Auth })
     const fee = BigInt(result.fee)
 
     this._sweepExpiredQuotes()
-    this._quoteCache.set(WalletAccountEvm7702Gasless._getTxKey(tx, mergedConfig), {
-      fee,
-      createdAt: Date.now(),
-      sponsoredOp: result.sponsoredOp,
-      tokenQuote: result.tokenQuote
-    })
+
+    // An operation carrying a placeholder authorization is only good for the estimate:
+    // it can never be reused for a send, so it is not cached.
+    if (eip7702Auth === null) {
+      this._quoteCache.set(WalletAccountEvm7702Gasless._getTxKey(tx, mergedConfig), {
+        fee,
+        createdAt: Date.now(),
+        sponsoredOp: result.sponsoredOp,
+        tokenQuote: result.tokenQuote
+      })
+    }
 
     return { fee }
   }
@@ -387,11 +394,39 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   }
 
   /** @private */
-  async _getAuthorization (config = this._config) {
+  async _isDelegatedTo (config) {
     const delegatedTo = await JsonRpcNode.from(this._eip1193Provider).getDelegatedAddress(this._address)
 
-    if (delegatedTo &&
-        delegatedTo.toLowerCase() === config.delegationAddress.toLowerCase()) {
+    return Boolean(delegatedTo) &&
+      delegatedTo.toLowerCase() === config.delegationAddress.toLowerCase()
+  }
+
+  /**
+   * Builds the authorization a quote estimates against, without signing anything.
+   *
+   * The bundler only needs to see the delegation (target and chain) to simulate the
+   * account, not a valid signature, so the signature and nonce are left for
+   * abstractionkit to fill with placeholders. Returns `null` when the account is already
+   * delegated to the configured address.
+   *
+   * @private
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The merged wallet configuration.
+   * @returns {Promise<{ chainId: bigint, address: string } | null>} The unsigned authorization, or null if none is needed.
+   */
+  async _getQuoteAuthorization (config = this._config) {
+    if (await this._isDelegatedTo(config)) {
+      return null
+    }
+
+    return {
+      chainId: await this._getChainId(),
+      address: config.delegationAddress
+    }
+  }
+
+  /** @private */
+  async _getAuthorization (config = this._config) {
+    if (await this._isDelegatedTo(config)) {
       return null
     }
 
