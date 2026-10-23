@@ -21,6 +21,17 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @returns {bigint} The fee, in the account's native coin (wei).
      */
     private static _getSignedUserOperationFee;
+    /**
+     * Checks that a cached quote's EIP-7702 authorization, if any, delegates to
+     * the account's own delegate. A quote built for another delegate must never
+     * be broadcast for this account.
+     *
+     * @private
+     * @param {TransactionQuote} quote - The cached quote.
+     * @param {Evm7702GaslessWalletConfig} [config] - The merged configuration.
+     * @returns {boolean} True if the quote may be reused.
+     */
+    private static _isQuoteForDelegate;
     /** @private */
     private static _getTxKey;
     /**
@@ -176,6 +187,20 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * Disposes the wallet account, erasing the private key from the memory.
      */
     dispose(): void;
+    /**
+     * Merges a per-call configuration over the account's configuration.
+     *
+     * `delegationAddress` is a constructor-only field: a per-call override would
+     * sign an EIP-7702 authorization for a delegate the account is not configured
+     * for, while the quote cached for the account's own delegate could still be
+     * reused for it. The constructor value always wins.
+     *
+     * @private
+     * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+     * @returns {Evm7702GaslessWalletConfig} The merged configuration.
+     * @throws {ConfigurationError} If the per-call configuration overrides `delegationAddress`.
+     */
+    private _mergeConfig;
     /** @private */
     private _getAuthorization;
     /** @private */

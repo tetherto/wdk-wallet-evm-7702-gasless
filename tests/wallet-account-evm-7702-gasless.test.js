@@ -703,6 +703,68 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       })
     })
   
+    describe('delegation address', () => {
+      const TX = { to: ACCOUNT.address, value: 1, data: '0x' }
+      const OTHER_DELEGATION_ADDRESS = '0x1111111111111111111111111111111111111111'
+
+      test('should reject a per-call delegationAddress override when quoting', async () => {
+        await expect(account.quoteSendTransaction(TX, { delegationAddress: OTHER_DELEGATION_ADDRESS }))
+          .rejects.toThrow(new ConfigurationError(
+            `The 'delegationAddress' option is set on the account and cannot be overridden per call (received ${OTHER_DELEGATION_ADDRESS}, the account delegates to ${SPONSORED_CONFIG.delegationAddress}).`
+          ))
+      })
+
+      test('should reject a per-call delegationAddress override when sending', async () => {
+        await expect(account.sendTransaction(TX, { delegationAddress: OTHER_DELEGATION_ADDRESS }))
+          .rejects.toThrow(new ConfigurationError(
+            `The 'delegationAddress' option is set on the account and cannot be overridden per call (received ${OTHER_DELEGATION_ADDRESS}, the account delegates to ${SPONSORED_CONFIG.delegationAddress}).`
+          ))
+      })
+
+      test('should accept a per-call config that repeats the account delegation address', async () => {
+        await expect(account.quoteSendTransaction(TX, { delegationAddress: SPONSORED_CONFIG.delegationAddress }))
+          .resolves.toEqual({ fee: 0n })
+      })
+
+      test('should key the quote cache by the delegation address', () => {
+        const key = WalletAccountEvm7702Gasless._getTxKey(TX, PAYMASTER_TOKEN_CONFIG)
+        const otherKey = WalletAccountEvm7702Gasless._getTxKey(TX, {
+          ...PAYMASTER_TOKEN_CONFIG,
+          delegationAddress: OTHER_DELEGATION_ADDRESS
+        })
+
+        expect(key).not.toBe(otherKey)
+      })
+
+      test('should not broadcast a cached quote that was built for another delegate', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_SPONSORED_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        // The account is already delegated, so a cached quote is used as-is.
+        const pmAccount = new WalletAccountEvm7702Gasless(SEED_PHRASE, "0'/0/0", {
+          ...PAYMASTER_TOKEN_CONFIG,
+          provider: DELEGATED_PROVIDER
+        })
+
+        pmAccount._quoteCache.set(
+          WalletAccountEvm7702Gasless._getTxKey(TX, PAYMASTER_TOKEN_CONFIG),
+          {
+            fee: 1n,
+            createdAt: Date.now(),
+            sponsoredOp: { ...DUMMY_SPONSORED_OP, eip7702Auth: { address: OTHER_DELEGATION_ADDRESS } }
+          }
+        )
+
+        await pmAccount.sendTransaction(TX)
+
+        // The cached operation was discarded: a new one was built and broadcast.
+        expect(createPaymasterUserOperationMock).toHaveBeenCalled()
+        expect(sendUserOperationMock.mock.calls[0][0].eip7702Auth).toBeUndefined()
+      })
+    })
+
     describe('sendTransaction', () => {
       const EXPECTED_USER_OP_SIGNATURE = '0xe9739f744de8042aad75f8f9c66d4ebf90458eafa1d0dafb3013404029da548c68cc295755e8ebaf690db3b1655b580b5c3e8bcf3680273386914ccb2ba8736f1c'
   
