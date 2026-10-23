@@ -14,13 +14,15 @@
 
 'use strict'
 
-import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
+import { Contract, hexlify, isAddress, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { JsonRpcNode, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
+
+import { ConfigurationError } from './errors.js'
 
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
@@ -39,6 +41,13 @@ import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessPaymasterTokenConfig} Evm7702GaslessPaymasterTokenConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').Evm7702GaslessSponsorshipPolicyConfig} Evm7702GaslessSponsorshipPolicyConfig */
 /** @typedef {import('./wallet-account-read-only-evm-7702-gasless.js').TypedData} TypedData */
+
+/**
+ * The public wallet-evm account capabilities used by the gasless wallet. The address must
+ * already be resolved; signing and disposal are delegated to the supplied account.
+ *
+ * @typedef {Pick<WalletAccountEvm, 'address' | 'index' | 'path' | 'keyPair' | 'sign' | 'signTypedData' | 'signAuthorization' | 'dispose'>} Evm7702GaslessOwnerAccount
+ */
 
 /**
  * @typedef {Object} TransactionQuote
@@ -72,15 +81,26 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Creates a new evm 7702 gasless wallet account from a wallet-evm account.
    *
    * @overload
-   * @param {WalletAccountEvm} account - The wallet-evm account.
+   * @param {Evm7702GaslessOwnerAccount} account - A compatible wallet-evm account, including one from another installed copy of the package.
    * @param {Evm7702GaslessWalletConfig} config - The configuration object.
+   * @throws {ConfigurationError} If the account has no valid address or required signing or disposal method.
    */
   constructor (seedOrAccount, pathOrConfig, config) {
-    const [ownerAccount, resolvedConfig] = seedOrAccount instanceof WalletAccountEvm
-      ? [seedOrAccount, pathOrConfig]
-      : [new WalletAccountEvm(seedOrAccount, pathOrConfig, config), config]
+    const [ownerAccount, resolvedConfig] = typeof seedOrAccount === 'string' || seedOrAccount instanceof Uint8Array
+      ? [new WalletAccountEvm(seedOrAccount, pathOrConfig, config), config]
+      : [seedOrAccount, pathOrConfig]
 
-    super(ownerAccount.address, resolvedConfig)
+    const address = ownerAccount?.address
+    if (!isAddress(address)) {
+      throw new ConfigurationError('Invalid wallet account: expected a valid EVM address.')
+    }
+    for (const method of ['sign', 'signTypedData', 'signAuthorization', 'dispose']) {
+      if (typeof ownerAccount[method] !== 'function') {
+        throw new ConfigurationError(`Invalid wallet account: missing ${method}().`)
+      }
+    }
+
+    super(address, resolvedConfig)
 
     /**
      * The evm 7702 gasless wallet account configuration.
