@@ -351,6 +351,120 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       })
     })
   
+    describe('supplied account', () => {
+      const MESSAGE = 'Sign with the supplied account.'
+      const TYPED_DATA = { domain: {}, types: { Message: [{ name: 'text', type: 'string' }] }, message: { text: MESSAGE } }
+      const TRANSACTION = { to: ACCOUNT.address, value: 1, data: '0x' }
+      const AUTHORIZATION = {
+        chainId: 1n,
+        address: SPONSORED_CONFIG.delegationAddress,
+        nonce: 3n,
+        signature: { yParity: 1, r: '0x01', s: '0x02' }
+      }
+      let owner, wrappedAccount, keyPairMock
+
+      beforeEach(() => {
+        keyPairMock = jest.fn(() => ({ privateKey: null, publicKey: null }))
+        owner = Object.create({
+          address: ACCOUNT.address,
+          get keyPair () { return keyPairMock() },
+          sign: jest.fn().mockResolvedValue('0x1234'),
+          signTypedData: jest.fn().mockResolvedValue('0x5678'),
+          signAuthorization: jest.fn().mockResolvedValue(AUTHORIZATION),
+          dispose: jest.fn()
+        })
+        wrappedAccount = new WalletAccountEvm7702Gasless(owner, SPONSORED_CONFIG)
+      })
+
+      afterEach(() => {
+        wrappedAccount?.dispose()
+      })
+
+      test('should accept inherited account capabilities without reading key material', async () => {
+        expect(owner).not.toBeInstanceOf(actualWalletEvm.WalletAccountEvm)
+        expect(keyPairMock).not.toHaveBeenCalled()
+        expect(await wrappedAccount.getAddress()).toBe(ACCOUNT.address)
+        expect(wrappedAccount.index).toBeUndefined()
+        expect(wrappedAccount.path).toBeUndefined()
+        expect(wrappedAccount.keyPair).toEqual({ privateKey: null, publicKey: null })
+        expect(keyPairMock).toHaveBeenCalledTimes(1)
+      })
+
+      test('should forward available account metadata', () => {
+        owner.index = 7
+        owner.path = "m/44'/60'/0'/0/7"
+
+        expect(wrappedAccount.index).toBe(7)
+        expect(wrappedAccount.path).toBe(owner.path)
+      })
+
+      test('should delegate message and typed data signing to the original account', async () => {
+        expect(await wrappedAccount.sign(MESSAGE)).toBe('0x1234')
+        expect(await wrappedAccount.signTypedData(TYPED_DATA)).toBe('0x5678')
+        expect(owner.sign).toHaveBeenCalledWith(MESSAGE)
+        expect(owner.signTypedData).toHaveBeenCalledWith(TYPED_DATA)
+        expect(owner.sign.mock.contexts).toEqual([owner])
+        expect(owner.signTypedData.mock.contexts).toEqual([owner])
+        expect(keyPairMock).not.toHaveBeenCalled()
+      })
+
+      test('should delegate authorization and user operation signing with the supplied configuration', async () => {
+        const signedOp = await wrappedAccount.signTransaction(TRANSACTION)
+
+        expect(signedOp).toEqual({ ...DUMMY_SPONSORED_OP, signature: '0x5678' })
+        expect(owner.signAuthorization).toHaveBeenCalledWith({ address: SPONSORED_CONFIG.delegationAddress })
+        expect(owner.signAuthorization.mock.contexts).toEqual([owner])
+        expect(owner.signTypedData.mock.contexts).toEqual([owner])
+        const { domain, types, message } = actualAk.Simple7702Account.getUserOperationEip712Data(
+          DUMMY_SPONSORED_OP, 1n, { entrypointAddress: actualAk.ENTRYPOINT_V8 }
+        )
+        expect(owner.signTypedData).toHaveBeenCalledWith({ domain, types, message })
+        expect(createUserOperationMock.mock.calls[0][2]).toBe(SPONSORED_CONFIG.bundlerUrl)
+        expect(createUserOperationMock.mock.calls[0][3].eip7702Auth).toEqual({
+          chainId: 1n,
+          address: SPONSORED_CONFIG.delegationAddress,
+          nonce: 3n,
+          yParity: '0x1',
+          r: '0x01',
+          s: '0x02'
+        })
+        expect(keyPairMock).not.toHaveBeenCalled()
+        expect(sendUserOperationMock).not.toHaveBeenCalled()
+      })
+
+      test.each([
+        ['sign', acc => acc.sign(MESSAGE)],
+        ['signTypedData', acc => acc.signTypedData(TYPED_DATA)],
+        ['signAuthorization', acc => acc.signTransaction(TRANSACTION)]
+      ])('should propagate the original %s rejection', async (method, invoke) => {
+        const error = new Error('Signing was declined.')
+        owner[method].mockRejectedValueOnce(error)
+
+        await expect(invoke(wrappedAccount)).rejects.toBe(error)
+      })
+
+      test('should dispose the supplied account', () => {
+        wrappedAccount.dispose()
+
+        expect(owner.dispose).toHaveBeenCalledTimes(1)
+        expect(owner.dispose.mock.contexts).toEqual([owner])
+      })
+
+      test.each([null, undefined, 0, true, [], {}])('should reject an invalid account: %p', invalidOwner => {
+        expect(() => new WalletAccountEvm7702Gasless(invalidOwner, SPONSORED_CONFIG)).toThrow(ConfigurationError)
+      })
+
+      test.each([
+        ['address', undefined], ['address', null], ['address', ''], ['address', 1], ['address', 'invalid-address'],
+        ...['sign', 'signTypedData', 'signAuthorization', 'dispose'].flatMap(method => [[method, undefined], [method, true]])
+      ])('should reject an account with invalid %s: %p', (property, value) => {
+        const invalidOwner = Object.create(owner, { [property]: { value } })
+
+        expect(() => new WalletAccountEvm7702Gasless(invalidOwner, SPONSORED_CONFIG)).toThrow(ConfigurationError)
+        expect(owner.dispose).not.toHaveBeenCalled()
+      })
+    })
+
     describe('EIP-1193 provider support', () => {
       test('should forward an EIP-1193 provider object verbatim to abstractionkit', async () => {
         const TX = { to: ACCOUNT.address, value: 1, data: '0x' }
