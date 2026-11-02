@@ -22,6 +22,8 @@ import { JsonRpcNode, calculateUserOperationMaxGasCost, fetchAccountNonce } from
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
+import { ConfigurationError } from './errors.js'
+
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
 /** @typedef {import('@tetherto/wdk-wallet-evm').KeyPair} KeyPair */
@@ -179,7 +181,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async signTransaction (tx, config) {
-    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+    const mergedConfig = this._mergeConfig(config)
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -257,7 +259,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
    */
   async quoteSendTransaction (tx, config) {
-    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+    const mergedConfig = this._mergeConfig(config)
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -322,7 +324,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async sendTransaction (tx, config) {
-    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+    const mergedConfig = this._mergeConfig(config)
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -363,7 +365,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
    */
   async transfer (options, config) {
-    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+    const mergedConfig = this._mergeConfig(config)
 
     if (config) {
       this._validateConfig(mergedConfig)
@@ -401,6 +403,34 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   dispose () {
     this._quoteCache.clear()
     this._ownerAccount.dispose()
+  }
+
+  /**
+   * Merges a per-call configuration over the account's configuration.
+   *
+   * `delegationAddress` is a constructor-only field: a per-call override would
+   * sign an EIP-7702 authorization for a delegate the account is not configured
+   * for, while the quote cached for the account's own delegate could still be
+   * reused for it. The constructor value always wins.
+   *
+   * @private
+   * @param {Partial<Evm7702GaslessPaymasterTokenConfig | Evm7702GaslessSponsorshipPolicyConfig>} [config] - If set, overrides the given configuration options.
+   * @returns {Evm7702GaslessWalletConfig} The merged configuration.
+   * @throws {ConfigurationError} If the per-call configuration overrides `delegationAddress`.
+   */
+  _mergeConfig (config) {
+    const mergedConfig = { ...this._config, provider: this._provider, ...config }
+
+    if (config?.delegationAddress !== undefined &&
+        config.delegationAddress.toLowerCase() !== this._config.delegationAddress.toLowerCase()) {
+      throw new ConfigurationError(
+        `The 'delegationAddress' option is set on the account and cannot be overridden per call (received ${config.delegationAddress}, the account delegates to ${this._config.delegationAddress}).`
+      )
+    }
+
+    mergedConfig.delegationAddress = this._config.delegationAddress
+
+    return mergedConfig
   }
 
   /** @private */
@@ -588,7 +618,26 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     if (!quote) return null
     this._quoteCache.delete(key)
     if (Date.now() - quote.createdAt > QUOTE_CACHE_TTL_MS) return null
+    if (!WalletAccountEvm7702Gasless._isQuoteForDelegate(quote, config)) return null
     return quote
+  }
+
+  /**
+   * Checks that a cached quote's EIP-7702 authorization, if any, delegates to
+   * the account's own delegate. A quote built for another delegate must never
+   * be broadcast for this account.
+   *
+   * @private
+   * @param {TransactionQuote} quote - The cached quote.
+   * @param {Evm7702GaslessWalletConfig} [config] - The merged configuration.
+   * @returns {boolean} True if the quote may be reused.
+   */
+  static _isQuoteForDelegate (quote, config = {}) {
+    const authorizedDelegate = quote.sponsoredOp?.eip7702Auth?.address
+    if (!authorizedDelegate) return true
+    if (!config.delegationAddress) return false
+
+    return authorizedDelegate.toLowerCase() === config.delegationAddress.toLowerCase()
   }
 
   /** @private */
@@ -611,6 +660,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
         data: t.data || '0x'
       })),
       isSponsored: Boolean(config.isSponsored),
+      delegationAddress: config.delegationAddress?.toLowerCase() ?? null,
       paymasterToken: config.paymasterToken?.address?.toLowerCase() ?? null,
       paymasterAddress: config.paymasterAddress?.toLowerCase() ?? null,
       sponsorshipPolicyId: config.sponsorshipPolicyId ?? null
