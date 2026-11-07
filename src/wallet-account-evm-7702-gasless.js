@@ -162,9 +162,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async sign (message) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     return await this._ownerAccount.sign(message)
   }
@@ -177,9 +175,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     return await this._ownerAccount.signTypedData({ domain, types, message })
   }
@@ -204,9 +200,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async signTransaction (tx, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
@@ -240,9 +234,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async approve (options) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const { token, spender, amount } = options
     const chainId = await this._getChainId()
@@ -336,9 +328,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async sendTransaction (tx, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
@@ -378,9 +368,7 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @throws {DisposalError} If the account has been disposed.
    */
   async transfer (options, config) {
-    if (this.disposed) {
-      throw new DisposalError('The account has been disposed.')
-    }
+    this._guardDisposed()
 
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
@@ -424,6 +412,13 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
     this._ownerAccount.dispose()
 
     this._disposed = true
+  }
+
+  /** @private */
+  _guardDisposed () {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
+    }
   }
 
   /** @private */
