@@ -16,6 +16,8 @@
 
 import { Contract, hexlify, keccak256, randomBytes, toUtf8Bytes } from 'ethers'
 
+import { DisposalError } from '@tetherto/wdk-wallet'
+
 import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { PrivateKeySignerEvm } from '@tetherto/wdk-wallet-evm/signers'
@@ -149,6 +151,18 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      * @type {Map<string, TransactionQuote>}
      */
     this._quoteCache = new Map()
+
+    /** @private */
+    this._disposed = false
+  }
+
+  /**
+   * True if the account has been disposed.
+   *
+   * @type {boolean}
+   */
+  get disposed () {
+    return this._disposed
   }
 
   /**
@@ -201,8 +215,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    *
    * @param {string} message - The message to sign.
    * @returns {Promise<string>} The message's signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sign (message) {
+    this._guardDisposed()
+
     return await this._ownerAccount.sign(message)
   }
 
@@ -211,8 +228,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    *
    * @param {TypedData} typedData - The typed data to sign.
    * @returns {Promise<string>} The typed data signature.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTypedData ({ domain, types, message }) {
+    this._guardDisposed()
+
     return await this._ownerAccount.signTypedData({ domain, types, message })
   }
 
@@ -233,8 +253,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<UserOperationV8>} The signed user operation.
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async signTransaction (tx, config) {
+    this._guardDisposed()
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -264,8 +287,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransactionResult>} The transaction's result.
    * @throws {Error} If trying to approve usdts on ethereum with allowance not equal to zero (due to the usdt allowance reset requirement).
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
+   * @throws {DisposalError} If the account has been disposed.
    */
   async approve (options) {
+    this._guardDisposed()
+
     const { token, spender, amount } = options
     const chainId = await this._getChainId()
 
@@ -376,8 +402,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransactionResult>} The transaction's result.
    * @throws {Error} If the transaction is not sponsored, and the transaction's cost surpasses the transaction max. fee option.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async sendTransaction (tx, config) {
+    this._guardDisposed()
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -417,8 +446,11 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * @returns {Promise<TransferResult>} The transfer's result.
    * @throws {Error} If the estimated fee meets or exceeds the configured `transferMaxFee`.
    * @throws {Error} If `nonceKey` is a bigint outside the uint192 range (0 to 2^192 - 1).
+   * @throws {DisposalError} If the account has been disposed.
    */
   async transfer (options, config) {
+    this._guardDisposed()
+
     const mergedConfig = { ...this._config, provider: this._provider, ...config }
 
     if (config) {
@@ -455,10 +487,21 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
    * Disposes the wallet account, erasing the private key from the memory.
    */
   dispose () {
+    if (this._disposed) return
+
     this._quoteCache.clear()
 
     if (this._shouldWipeOwnerAccountOnDisposal) {
       this._ownerAccount.dispose()
+    }
+
+    this._disposed = true
+  }
+
+  /** @private */
+  _guardDisposed () {
+    if (this.disposed) {
+      throw new DisposalError('The account has been disposed.')
     }
   }
 

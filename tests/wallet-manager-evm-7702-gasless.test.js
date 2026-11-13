@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
-import { InvalidSignerError, NoSuchElementError } from '@tetherto/wdk-wallet'
+import { DisposalError, InvalidSignerError, NoSuchElementError } from '@tetherto/wdk-wallet'
 import { PrivateKeySignerEvm, SeedSignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
 const actualEthers = await import('ethers')
@@ -383,6 +383,31 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         wallet.dispose()
 
         expect(account.keyPair.privateKey).toBeNull()
+      })
+
+      test('should expose the disposed state', () => {
+        expect(wallet.disposed).toBe(false)
+
+        wallet.dispose()
+
+        expect(wallet.disposed).toBe(true)
+      })
+
+      test('should throw DisposalError when getting an account after disposal', async () => {
+        wallet.dispose()
+
+        await expect(wallet.getAccount(0)).rejects.toThrow(DisposalError)
+        await expect(wallet.getAccountByPath("0'/0/0")).rejects.toThrow(DisposalError)
+      })
+
+      test('should throw DisposalError when getting an account from a disposed signer', async () => {
+        const namedSigner = new SeedSignerEvm(OTHER_SEED_PHRASE, "m/44'/60'")
+
+        wallet.addSigner('other', namedSigner)
+        namedSigner.dispose()
+
+        await expect(wallet.getAccount(0, { signerName: 'other' })).rejects.toThrow(DisposalError)
+        await expect(wallet.getAccountByPath("0'/0/0", { signerName: 'other' })).rejects.toThrow(DisposalError)
       })
     })
   })
