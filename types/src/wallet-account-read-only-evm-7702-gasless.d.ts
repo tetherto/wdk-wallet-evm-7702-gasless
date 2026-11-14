@@ -99,6 +99,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     /**
      * Quotes the costs of a send transaction operation.
      *
+     * If the account is not yet delegated to the configured `delegationAddress`, the operation is
+     * estimated with an unsigned EIP-7702 authorization (abstractionkit fills in placeholder signature
+     * fields), so the bundler can simulate the account before its first delegation.
+     *
      * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
      * @param {Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>} [config] - If set, overrides the given configuration options.
      * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
@@ -206,6 +210,24 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
      * @returns {Promise<bigint>} The chain id.
      */
     protected _getChainId(): Promise<bigint>;
+    /**
+     * Returns whether the account is currently delegated (EIP-7702) to the configured delegation address.
+     *
+     * @protected
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+     * @returns {Promise<boolean>} True if the account's code is the delegation designator of `config.delegationAddress`.
+     */
+    protected _isDelegatedTo(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<boolean>;
+    /**
+     * Returns the EIP-7702 authorization to estimate a user operation with. Nothing is signed: when the
+     * account is not yet delegated, the authorization only carries the chain id and the delegation address,
+     * and abstractionkit fills in placeholder signature fields so the bundler can simulate the account.
+     *
+     * @protected
+     * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+     * @returns {Promise<Eip7702AuthorizationOverride | null>} The unsigned authorization, or null if the account is already delegated.
+     */
+    protected _getQuoteAuthorization(config?: Omit<Evm7702GaslessWalletConfig, "transferMaxFee" | "transactionMaxFee">): Promise<Eip7702AuthorizationOverride | null>;
     /**
      * Returns a cached abstractionkit Bundler client.
      *

@@ -22,7 +22,7 @@ import { WalletAccountEvm } from '@tetherto/wdk-wallet-evm'
 
 import { PrivateKeySignerEvm } from '@tetherto/wdk-wallet-evm/signers'
 
-import { JsonRpcNode, calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
+import { calculateUserOperationMaxGasCost, fetchAccountNonce } from 'abstractionkit'
 
 import WalletAccountReadOnlyEvm7702Gasless from './wallet-account-read-only-evm-7702-gasless.js'
 
@@ -502,26 +502,6 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
   _guardDisposed () {
     if (this.disposed) {
       throw new DisposalError('The account has been disposed.')
-    }
-  }
-
-  /** @private */
-  async _isDelegatedTo (config) {
-    const delegatedTo = await JsonRpcNode.from(this._eip1193Provider).getDelegatedAddress(await this.getAddress())
-
-    return Boolean(delegatedTo) &&
-      delegatedTo.toLowerCase() === config.delegationAddress.toLowerCase()
-  }
-
-  /** @private */
-  async _getQuoteAuthorization (config = this._config) {
-    if (await this._isDelegatedTo(config)) {
-      return null
-    }
-
-    return {
-      chainId: await this._getChainId(),
-      address: config.delegationAddress
     }
   }
 
