@@ -159,7 +159,7 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
    * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} config - The configuration object.
    */
   constructor (address, config) {
-    super(address)
+    super(address, config)
 
     this._validateConfig(config)
 
