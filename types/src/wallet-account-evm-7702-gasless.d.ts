@@ -228,7 +228,9 @@ export default class WalletAccountEvm7702Gasless extends WalletAccountReadOnlyEv
      */
     toReadOnlyAccount(): Promise<WalletAccountReadOnlyEvm7702Gasless>;
     /**
-     * Disposes the wallet account, erasing the private key from the memory.
+     * Disposes the wallet account. The owner's private key is erased only if the account owns its signer (created from a
+     * seed, or from a signer with `shouldWipeSignerOnDisposal`); otherwise a signer or wallet-evm account you supplied is
+     * left untouched.
      */
     dispose(): void;
     /** @private */
