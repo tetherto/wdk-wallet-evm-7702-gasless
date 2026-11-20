@@ -108,6 +108,11 @@ const getUserOperationByHashMock = jest.fn()
 const createUserOperationMock = jest.fn()
 const createPaymasterUserOperationMock = jest.fn()
 const sendJsonRpcRequestMock = jest.fn()
+const getDelegatedAddressMock = jest.fn()
+
+const JsonRpcNodeMock = {
+  from: jest.fn(() => ({ getDelegatedAddress: getDelegatedAddressMock }))
+}
 
 const BundlerMock = jest.fn().mockImplementation(() => ({
   getUserOperationReceipt: getUserOperationReceiptMock,
@@ -136,6 +141,7 @@ jest.unstable_mockModule('abstractionkit', () => ({
   Simple7702Account: Simple7702AccountMock,
   Simple7702AccountV09: Simple7702AccountV09Mock,
   Erc7677Paymaster: Erc7677PaymasterMock,
+  JsonRpcNode: JsonRpcNodeMock,
   sendJsonRpcRequest: sendJsonRpcRequestMock
 }))
 
@@ -158,6 +164,7 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
       })
       createUserOperationMock.mockResolvedValue({ ...DUMMY_SPONSORED_OP })
       createPaymasterUserOperationMock.mockResolvedValue({ userOperation: { ...DUMMY_SPONSORED_OP } })
+      getDelegatedAddressMock.mockResolvedValue(PAYMASTER_TOKEN_CONFIG.delegationAddress)
 
       account = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, SPONSORED_CONFIG)
     })
@@ -477,6 +484,58 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
         expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(1)
       })
 
+      test('should estimate with an unsigned eip-7702 authorization when the account is not delegated yet', async () => {
+        getDelegatedAddressMock.mockResolvedValue(null)
+
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_SPONSORED_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        const { fee } = await pmAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' })
+
+        expect(fee).toBe(500_000n)
+        expect(getDelegatedAddressMock).toHaveBeenCalledWith(ADDRESS)
+
+        const createOverrides = createUserOperationMock.mock.calls[0][3]
+        expect(createOverrides.eip7702Auth).toEqual({
+          chainId: 1n,
+          address: PAYMASTER_TOKEN_CONFIG.delegationAddress
+        })
+      })
+
+      test('should estimate with an unsigned eip-7702 authorization when the account is delegated to another address', async () => {
+        getDelegatedAddressMock.mockResolvedValue('0x1111111111111111111111111111111111111111')
+
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_SPONSORED_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        await pmAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' })
+
+        const createOverrides = createUserOperationMock.mock.calls[0][3]
+        expect(createOverrides.eip7702Auth).toEqual({
+          chainId: 1n,
+          address: PAYMASTER_TOKEN_CONFIG.delegationAddress
+        })
+      })
+
+      test('should not add an eip-7702 authorization when the account is already delegated', async () => {
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_SPONSORED_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        await pmAccount.quoteSendTransaction({ to: SPENDER, value: 1, data: '0x' })
+
+        const createOverrides = createUserOperationMock.mock.calls[0][3]
+        expect(createOverrides).not.toHaveProperty('eip7702Auth')
+      })
+
       test('should propagate non-AbstractionKitError errors from createPaymasterUserOperation', async () => {
         const otherError = new Error('boom')
         createPaymasterUserOperationMock.mockRejectedValue(otherError)
@@ -677,6 +736,24 @@ describe('@tetherto/wdk-wallet-evm-7702-gasless', () => {
           { token: TOKEN_ADDRESS }
         )
         expect(createPaymasterUserOperationMock).toHaveBeenCalledTimes(1)
+      })
+
+      test('should estimate with an unsigned eip-7702 authorization when the account is not delegated yet', async () => {
+        getDelegatedAddressMock.mockResolvedValue(null)
+
+        createPaymasterUserOperationMock.mockResolvedValue({
+          userOperation: { ...DUMMY_SPONSORED_OP },
+          tokenQuote: { tokenCost: 500_000n }
+        })
+
+        const pmAccount = new WalletAccountReadOnlyEvm7702Gasless(ADDRESS, PAYMASTER_TOKEN_CONFIG)
+        await pmAccount.quoteTransfer({ token: TOKEN_ADDRESS, recipient: SPENDER, amount: 100_000n })
+
+        const createOverrides = createUserOperationMock.mock.calls[0][3]
+        expect(createOverrides.eip7702Auth).toEqual({
+          chainId: 1n,
+          address: PAYMASTER_TOKEN_CONFIG.delegationAddress
+        })
       })
     })
 
