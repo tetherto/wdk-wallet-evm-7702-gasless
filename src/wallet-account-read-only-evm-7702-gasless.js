@@ -26,6 +26,7 @@ import {
   ENTRYPOINT_V8,
   ENTRYPOINT_V9,
   Erc7677Paymaster,
+  JsonRpcNode,
   Simple7702Account,
   Simple7702AccountV09,
   sendJsonRpcRequest
@@ -265,6 +266,10 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
   /**
    * Quotes the costs of a send transaction operation.
    *
+   * If the account is not yet delegated to the configured `delegationAddress`, the operation is
+   * estimated with an unsigned EIP-7702 authorization (abstractionkit fills in placeholder signature
+   * fields), so the bundler can simulate the account before its first delegation.
+   *
    * @param {EvmTransaction | EvmTransaction[]} tx - The transaction, or an array of multiple transactions to send in batch.
    * @param {Partial<Evm7702GaslessSponsorshipPolicyConfig | Evm7702GaslessPaymasterTokenConfig>} [config] - If set, overrides the given configuration options.
    * @returns {Promise<Omit<TransactionResult, 'hash'>>} The transaction's quotes.
@@ -282,7 +287,8 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
       return { fee: 0n }
     }
 
-    const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig)
+    const eip7702Auth = await this._getQuoteAuthorization(mergedConfig)
+    const result = await this._getUserOperationGasCost([tx].flat(), mergedConfig, { eip7702Auth })
 
     return { fee: BigInt(result.fee) }
   }
@@ -605,6 +611,40 @@ export default class WalletAccountReadOnlyEvm7702Gasless extends WalletAccountRe
     }
 
     return this._chainId
+  }
+
+  /**
+   * Returns whether the account is currently delegated (EIP-7702) to the configured delegation address.
+   *
+   * @protected
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+   * @returns {Promise<boolean>} True if the account's code is the delegation designator of `config.delegationAddress`.
+   */
+  async _isDelegatedTo (config = this._config) {
+    const delegatedTo = await JsonRpcNode.from(this._eip1193Provider).getDelegatedAddress(await this.getAddress())
+
+    return Boolean(delegatedTo) &&
+      delegatedTo.toLowerCase() === config.delegationAddress.toLowerCase()
+  }
+
+  /**
+   * Returns the EIP-7702 authorization to estimate a user operation with. Nothing is signed: when the
+   * account is not yet delegated, the authorization only carries the chain id and the delegation address,
+   * and abstractionkit fills in placeholder signature fields so the bundler can simulate the account.
+   *
+   * @protected
+   * @param {Omit<Evm7702GaslessWalletConfig, 'transferMaxFee' | 'transactionMaxFee'>} [config] - The configuration object.
+   * @returns {Promise<Eip7702AuthorizationOverride | null>} The unsigned authorization, or null if the account is already delegated.
+   */
+  async _getQuoteAuthorization (config = this._config) {
+    if (await this._isDelegatedTo(config)) {
+      return null
+    }
+
+    return {
+      chainId: await this._getChainId(),
+      address: config.delegationAddress
+    }
   }
 
   /**
